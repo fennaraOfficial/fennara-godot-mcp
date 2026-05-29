@@ -1,6 +1,6 @@
 # Fennara Godot MCP
 
-Fennara is a Godot MCP and AI plugin workflow for agents working inside real Godot projects.
+Fennara MCP is a Godot MCP workflow for AI agents using diagnostics, scene validation, runtime feedback, screenshots, SemanticSearch, and patch-and-rerun loops inside real Godot projects.
 
 Traditional MCP gives an AI commands.
 
