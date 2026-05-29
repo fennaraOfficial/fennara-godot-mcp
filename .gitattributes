@@ -1,0 +1,6 @@
+*.dll binary
+*.exe binary
+*.lib binary
+*.exp binary
+*.png binary
+*.mp4 binary
