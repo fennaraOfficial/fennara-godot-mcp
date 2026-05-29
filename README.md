@@ -17,8 +17,6 @@ Fennara gives the AI feedback from Godot:
 
 Fennara is not trying to make Godot optional. It makes AI agents accountable to the real Godot engine.
 
-![Fennara Godot plugin dock](media/fennara-godot-plugin-dock.png)
-
 ## Why This Exists
 
 Most Godot MCP servers expose editor commands like create node, set property, save scene, run project, read logs, and take screenshots.
@@ -29,7 +27,7 @@ An AI agent can call commands successfully and still leave behind broken scripts
 
 ## Demo
 
-Watch Fennara MCP with Codex on GDQuest's open-source Godot 4 Open RPG project:
+Start with the real-project test: Fennara MCP with Codex on GDQuest's open-source Godot 4 Open RPG project.
 
 [![Fennara MCP tested on a real Godot RPG project](https://img.youtube.com/vi/0Egu3S-9MM0/maxresdefault.jpg)](https://www.youtube.com/watch?v=0Egu3S-9MM0)
 
@@ -38,6 +36,7 @@ In the demo, Codex works on an existing RPG codebase instead of an empty project
 Demo notes:
 
 - [Open RPG demo breakdown](docs/open-rpg-demo.md)
+- [More Fennara demos: boss fight, FPS prototype, and Adventure Capitalist-style clone](docs/demos.md)
 - [Fennara vs traditional Godot MCP](docs/fennara-vs-traditional-godot-mcp.md)
 
 ## Links
@@ -88,10 +87,6 @@ Fennara exposes Godot-aware tools for agent workflows:
 - scene screenshots
 - scene validation
 - SemanticSearch for indexed project code
-
-![Fennara tool output](media/fennara-tool-output.png)
-
-![Fennara thinking and tool status cards](media/fennara-thinking-cards.png)
 
 ## Example Prompts
 
