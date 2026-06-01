@@ -1,0 +1,11 @@
+.godot/
+.import/
+*.tmp
+*.log
+user://
+
+# Keep packaged preview binaries in this repo.
+!addons/fennara/bin/*.dll
+!addons/fennara/bin/*.exe
+!addons/fennara/bin/*.so
+!addons/fennara/bin/*.dylib

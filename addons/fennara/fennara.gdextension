@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "fennara_entry"
+compatibility_minimum = 4.5
+reloadable = true
+
+[libraries]
+
+windows.editor.x86_64 = "res://addons/fennara/bin/libfennara.windows.editor.x86_64.dll"
+linux.editor.x86_64 = "res://addons/fennara/bin/libfennara.linux.editor.x86_64.so"
+macos.editor = "res://addons/fennara/bin/libfennara.macos.editor.framework"
