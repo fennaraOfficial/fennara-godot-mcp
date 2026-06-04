@@ -16,6 +16,14 @@ https://github.com/fennaraOfficial/kantari-godot-demo
 
 Kantari is a public Godot demo project made with Fennara. The repository includes a real saved Godot project with scenes, scripts, project settings, and the Fennara addon payload used during the workflow.
 
+## Asteroid Rush Godot Demo Repository
+
+https://youtu.be/ztbH6zBhxMc
+
+https://github.com/fennaraOfficial/fennara-asteroid-rush-demo
+
+Asteroid Rush is a public Godot demo project made with Fennara. The repository includes a stylized 3D arcade space runner with modular saved scenes, a visible editor-authored space environment, rocket-powered asteroid platforms, collectibles, HUD, particles, lighting, and a playable third-person controller.
+
 ## Cinematic 2D Boss Fight With Codex + Fennara MCP
 
 https://youtu.be/KMRGHtficr8
