@@ -1,78 +1,58 @@
 # Fennara Godot MCP
 
-Fennara MCP is a Godot MCP workflow for AI agents using diagnostics, scene validation, runtime feedback, screenshots, SemanticSearch, and patch-and-rerun loops inside real Godot projects.
+Fennara connects AI coding agents to real Godot feedback so they can inspect, fix, and rerun work instead of guessing from files alone.
 
-Traditional MCP gives an AI commands.
+Game development breaks in places normal coding agents cannot see: script errors, node warnings, runtime errors, diagnostics, missing resources, nested subresources, scene state, and screenshots. Fennara gives agents that Godot context through the Godot plugin and local MCP server.
 
-Fennara gives the AI feedback from Godot:
+## Start Here
 
-- GDScript diagnostics
-- scene validation
-- runtime errors
-- scene tree inspection
-- node properties
-- screenshots
-- SemanticSearch
-- patch-and-rerun workflows
-
-Fennara is not trying to make Godot optional. It makes AI agents accountable to the real Godot engine.
-
-## Why This Exists
-
-Most Godot MCP servers expose editor commands like create node, set property, save scene, run project, read logs, and take screenshots.
-
-That is useful, but it is not enough for real projects.
-
-An AI agent can call commands successfully and still leave behind broken scripts, invalid scenes, missing resources, bad NodePaths, or runtime errors. Fennara is built around the feedback loop after the command: inspect, edit, receive Godot feedback, patch, and rerun.
-
-## Demo
-
-Start with the real-project test: Fennara MCP with Codex on GDQuest's open-source Godot 4 Open RPG project.
-
-[![Fennara MCP tested on a real Godot RPG project](https://img.youtube.com/vi/0Egu3S-9MM0/maxresdefault.jpg)](https://www.youtube.com/watch?v=0Egu3S-9MM0)
-
-In the demo, Codex works on an existing RPG codebase instead of an empty project. The first script breaks, Fennara returns Godot feedback, and Codex patches the implementation.
-
-Demo notes:
-
-- [Open RPG demo breakdown](docs/open-rpg-demo.md)
-- [More Fennara demos: boss fight, FPS prototype, and Adventure Capitalist-style clone](docs/demos.md)
-- [Fennara vs traditional Godot MCP](docs/fennara-vs-traditional-godot-mcp.md)
-
-## Links
-
-- Godot MCP overview: https://www.fennara.io/godot-mcp
-- Godot AI plugin overview: https://www.fennara.io/godot-ai-plugin
-- Setup guide: https://www.fennara.io/docs/get-started
-- MCP docs: https://www.fennara.io/docs/mcp
-- Godot tools docs: https://www.fennara.io/docs/godot-plugin/tools
-- Website: https://www.fennara.io
-
-## Included Addon Preview
-
-This repository includes the current Windows Godot addon payload under:
-
-```text
-addons/fennara
-```
-
-The included binary payload is intended as a public preview/reference package. For normal installation and account setup, use the Fennara dashboard installer from the setup guide:
+Do not install Fennara by copying files from this repository. The supported setup path is the Fennara dashboard installer:
 
 https://www.fennara.io/docs/get-started
 
-The installer handles the local device identity, Godot project selection, API key flow, plugin install, local MCP server install, and supported MCP app configuration.
+The installer handles:
 
-## Supported AI Apps
+- creating the local device identity
+- installing the Godot plugin
+- installing the local Fennara MCP server
+- choosing the Godot project Fennara should connect to
+- configuring supported MCP apps such as Codex, Cursor, Cline, VS Code, Claude Code, Claude Desktop, and Antigravity
 
-Fennara MCP is designed for workflows with:
+## Setup Steps
 
-- Codex
-- Cursor
-- Claude Code
-- Claude Desktop
-- Antigravity
+1. Create a Fennara account.
+2. Open your Fennara dashboard.
+3. Copy the install command for your operating system.
+4. Run the command in your terminal.
+5. In the installer, choose the Godot project you want Fennara to use.
+6. If your project uses C#, choose C# support in Step 2. If you only use GDScript, you can skip C# support.
+7. In Step 3, choose the MCP app you want to connect, then click that app's config/update button.
+8. Open the Godot project and paste your API key in the Fennara plugin settings.
+9. Fully restart your MCP app so it reloads the Fennara MCP server.
 
-Support can vary by operating system and client config format. See the MCP setup docs for details.
+If your MCP app is not shown in the installer, finish the installer first, then use the manual MCP setup guide:
+
+https://www.fennara.io/docs/mcp#manual-setup
+
+Other MCP apps can work when they support local stdio MCP servers and are configured manually.
+
+## How to Confirm It Works
+
+After setup, open your MCP app and ask:
+
+```text
+Use Fennara MCP to run fennara_status and tell me which Godot project is connected.
+```
+
+If Fennara reports the expected Godot project, the MCP server and plugin are connected.
+
+If it does not appear, restart the MCP app and check:
+
+- the Fennara installer finished successfully
+- the MCP app was selected in installer Step 3
+- the app's config/update button was clicked
+- your Godot project is open
+- your API key is saved in the Fennara plugin settings
 
 ## What Fennara Tools Do
 
@@ -87,24 +67,40 @@ Fennara exposes Godot-aware tools for agent workflows:
 - scene screenshots
 - scene validation
 - SemanticSearch for indexed project code
+- shader search
 
-## Example Prompts
+For the full tools reference, see:
 
-```text
-Use Fennara MCP to inspect the current Godot project, run fennara_status, read the scene tree, check diagnostics, and explain what project is connected.
-```
+https://www.fennara.io/docs/tools
 
-```text
-Use Fennara MCP to inspect this Godot project and make a small change that fits the existing architecture. Explain what files changed and what Godot feedback you used while working.
-```
+## Demos
 
-```text
-Work inside this existing Godot project like a careful contributor. Inspect the architecture first, make the smallest useful change, and explain how to test it in-game.
-```
+Start with the real-project test: Fennara MCP with Codex on GDQuest's open-source Godot 4 Open RPG project.
+
+[![Fennara MCP tested on a real Godot RPG project](https://img.youtube.com/vi/0Egu3S-9MM0/maxresdefault.jpg)](https://www.youtube.com/watch?v=0Egu3S-9MM0)
+
+In the demo, Codex works on an existing RPG codebase instead of an empty project. The first script breaks, Fennara returns Godot feedback, and Codex patches the implementation.
+
+More demos:
+
+- [Open RPG demo breakdown](docs/open-rpg-demo.md)
+- [More Fennara demos](docs/demos.md)
+- [Fennara vs traditional Godot MCP](docs/fennara-vs-traditional-godot-mcp.md)
+
+## Useful Links
+
+- Setup guide: https://www.fennara.io/docs/get-started
+- MCP setup: https://www.fennara.io/docs/mcp
+- Godot tools docs: https://www.fennara.io/docs/tools
+- Godot MCP overview: https://www.fennara.io/godot-mcp
+- Godot AI plugin overview: https://www.fennara.io/godot-ai-plugin
+- Website: https://www.fennara.io
 
 ## Repository Status
 
-Fennara is in active development. This public repository is for discoverability, documentation, setup links, demos, and addon preview packaging. Some service-side components are not open source.
+This public repository is for discoverability, documentation, setup links, demo context, and public metadata. The installable Fennara plugin and MCP server are distributed through the Fennara installer, not by copying an `addons` folder from this repo.
+
+Some service-side components are not open source.
 
 ## License
 

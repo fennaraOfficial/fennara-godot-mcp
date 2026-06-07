@@ -14,7 +14,7 @@ No. Fennara is not trying to make Godot optional. It is designed to make AI agen
 
 ## Does this repo include the full backend?
 
-No. This public repo is for discoverability, docs, setup links, demo context, and addon preview packaging. Some service-side components are not open source.
+No. This public repo is for discoverability, docs, setup links, demo context, and public metadata. The installable plugin and MCP server are distributed through the Fennara installer. Some service-side components are not open source.
 
 ## How should I install Fennara?
 

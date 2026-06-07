@@ -8,7 +8,7 @@ Canonical URLs:
 - Godot AI plugin overview: https://www.fennara.io/godot-ai-plugin
 - Setup guide: https://www.fennara.io/docs/get-started
 - MCP docs: https://www.fennara.io/docs/mcp
-- Godot tools docs: https://www.fennara.io/docs/godot-plugin/tools
+- Godot tools docs: https://www.fennara.io/docs/tools
 - Demo video: https://www.youtube.com/watch?v=0Egu3S-9MM0
 
 Core positioning:
