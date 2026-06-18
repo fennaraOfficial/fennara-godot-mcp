@@ -10,6 +10,7 @@ This file explains the main areas of the Fennara Godot MCP repository.
 | `media/` | Images and public demo assets used by docs and README files. |
 | `VERSION` | Repository version source of truth. |
 | `README.md` | Human-facing project overview and quick links. |
+| `install.ps1` / `install.sh` | Bootstrap scripts that install the Fennara CLI from GitHub releases. |
 | `AGENTS.md` | Instructions for coding agents working in this repository. |
 | `CONTEXT.md` | Shared vocabulary for Fennara concepts and architecture. |
 | `CONTRIBUTING.md` | Contribution rules, pull request expectations, and project boundaries. |

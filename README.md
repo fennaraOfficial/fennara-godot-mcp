@@ -6,6 +6,22 @@ Game development breaks in places normal coding agents cannot see: script errors
 
 ## Start Here
 
+Install the Fennara CLI:
+
+```powershell
+irm https://raw.githubusercontent.com/fennaraOfficial/fennara-godot-mcp/main/install.ps1 | iex
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fennaraOfficial/fennara-godot-mcp/main/install.sh | sh
+```
+
+Then check the local install:
+
+```bash
+fennara doctor
+```
+
 The supported setup path is documented here:
 
 https://www.fennara.io/docs/get-started
