@@ -76,6 +76,7 @@ jobs:
 
       - name: Cache SCons and godot-cpp outputs
         if: steps.source.outputs.available == 'true'
+        id: godot_cpp_cache
         uses: actions/cache@v4
         with:
           path: |
@@ -88,9 +89,15 @@ jobs:
             godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-
             godot-cpp-${{ runner.os }}-${{ matrix.platform }}-
 
+      - name: Report godot-cpp cache
+        if: steps.source.outputs.available == 'true'
+        run: |
+          echo "cache-hit: ${{ steps.godot_cpp_cache.outputs.cache-hit }}"
+          echo "cache-primary-key: godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-${{ hashFiles('fennara-cpp/godot-cpp/SConstruct', 'fennara-cpp/godot-cpp/tools/**/*.py', 'fennara-cpp/godot-cpp/include/**/*.h', 'fennara-cpp/godot-cpp/include/**/*.hpp', 'fennara-cpp/godot-cpp/gdextension/*.json') }}"
+
       - name: Build GDExtension
         if: steps.source.outputs.available == 'true'
         working-directory: fennara-cpp
         env:
           SCONS_CACHE: ${{ github.workspace }}/fennara-cpp/.scons_cache
-        run: scons platform=${{ matrix.platform }} target=editor
+        run: scons platform=${{ matrix.platform }} target=editor --debug=explain --cache-show

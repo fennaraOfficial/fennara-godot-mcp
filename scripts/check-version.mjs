@@ -26,7 +26,7 @@ for (const manifest of [
 for (const name of ["fennara-daemon", "fennara-mcp"]) {
   expect(
     "local/Cargo.lock",
-    new RegExp(`name = "${escapeRegExp(name)}"\\nversion = "${escapeRegExp(version)}"`),
+    new RegExp(`name = "${escapeRegExp(name)}"\\r?\\nversion = "${escapeRegExp(version)}"`),
     `${name} lockfile version must be ${version}`,
   );
 }
