@@ -1,0 +1,195 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, without v prefix. Must match VERSION."
+        required: true
+        type: string
+      promote_latest:
+        description: "Also update the moving latest release for installers."
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: package ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            arch: x86_64
+            os: windows-latest
+          - platform: linux
+            arch: x86_64
+            os: ubuntu-latest
+          - platform: macos
+            arch: arm64
+            os: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify release input
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "::error::Release workflow must run from main."
+            exit 1
+          fi
+
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [[ "${version}" != "${{ inputs.version }}" ]]; then
+            echo "::error::VERSION (${version}) does not match workflow input (${{ inputs.version }})."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check version sync
+        run: node scripts/check-version.mjs
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SCons
+        run: pip install scons
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache SCons and godot-cpp outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            fennara-cpp/.scons_cache/
+            fennara-cpp/.sconsign.dblite
+            fennara-cpp/godot-cpp/bin/
+            fennara-cpp/godot-cpp/gen/
+          key: godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-${{ hashFiles('fennara-cpp/godot-cpp/SConstruct', 'fennara-cpp/godot-cpp/tools/**/*.py', 'fennara-cpp/godot-cpp/include/**/*.h', 'fennara-cpp/godot-cpp/include/**/*.hpp', 'fennara-cpp/godot-cpp/gdextension/*.json') }}
+          restore-keys: |
+            godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-
+            godot-cpp-${{ runner.os }}-${{ matrix.platform }}-
+
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            local/target
+          key: local-cargo-${{ runner.os }}-${{ hashFiles('local/Cargo.lock') }}
+          restore-keys: |
+            local-cargo-${{ runner.os }}-
+
+      - name: Build GDExtension
+        working-directory: fennara-cpp
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/fennara-cpp/.scons_cache
+        run: scons platform=${{ matrix.platform }} target=editor
+
+      - name: Build local tools
+        working-directory: local
+        run: cargo build --release --locked
+
+      - name: Assemble release archives
+        run: node scripts/package-preview.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+
+      - name: Upload release archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: fennara-release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: publish GitHub release
+    runs-on: ubuntu-latest
+    needs: package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release archives
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: fennara-release-*
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PROMOTE_LATEST: ${{ inputs.promote_latest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="v${VERSION}"
+          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "::error::Release ${tag} already exists."
+            exit 1
+          fi
+
+          mapfile -t assets < <(find release-assets -type f -name '*.zip' | sort)
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "::error::No release assets found."
+            exit 1
+          fi
+
+          notes="Fennara Godot MCP ${tag}
+
+          Built from ${GITHUB_SHA}."
+
+          gh release create "${tag}" "${assets[@]}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "Fennara Godot MCP ${tag}" \
+            --notes "${notes}"
+
+          if [[ "${PROMOTE_LATEST}" == "true" ]]; then
+            if gh release view latest --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+              gh release delete latest --repo "${GITHUB_REPOSITORY}" --yes --cleanup-tag
+            fi
+
+            git tag --force latest "${GITHUB_SHA}"
+            git push --force origin refs/tags/latest
+
+            latest_notes="Latest Fennara Godot MCP release.
+
+            Currently points to ${tag}, built from ${GITHUB_SHA}."
+
+            gh release create latest "${assets[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
+              --title "Fennara Godot MCP latest" \
+              --notes "${latest_notes}"
+          fi
