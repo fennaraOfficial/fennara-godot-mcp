@@ -24,6 +24,22 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     };
     ensure_addon_source(&source)?;
 
+    install_addon(&project_dir, &source)?;
+
+    println!("Installed Fennara addon");
+    println!("project: {}", display_path(&project_dir));
+    println!("source: {}", display_path(&source));
+    println!(
+        "target: {}",
+        display_path(&project_dir.join("addons").join("fennara"))
+    );
+    Ok(())
+}
+
+pub fn install_addon(project_dir: &Path, source: &Path) -> Result<(), String> {
+    ensure_godot_project(project_dir)?;
+    ensure_addon_source(source)?;
+
     let target = project_dir.join("addons").join("fennara");
     if target.exists() {
         fs::remove_dir_all(&target).map_err(|err| {
@@ -34,11 +50,6 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
         })?;
     }
     copy_dir(&source, &target)?;
-
-    println!("Installed Fennara addon");
-    println!("project: {}", display_path(&project_dir));
-    println!("source: {}", display_path(&source));
-    println!("target: {}", display_path(&target));
     Ok(())
 }
 
@@ -104,9 +115,12 @@ Usage:
     );
 }
 
-fn ensure_godot_project(project_dir: &Path) -> Result<(), String> {
-    let project_file = project_dir.join("project.godot");
-    if project_file.is_file() {
+pub fn is_godot_project(project_dir: &Path) -> bool {
+    project_dir.join("project.godot").is_file()
+}
+
+pub fn ensure_godot_project(project_dir: &Path) -> Result<(), String> {
+    if is_godot_project(project_dir) {
         Ok(())
     } else {
         Err(format!(

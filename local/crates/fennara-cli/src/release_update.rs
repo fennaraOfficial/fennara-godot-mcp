@@ -1,4 +1,5 @@
 use crate::app_layout::{AppLayout, arch_name, binary_name, display_path, platform_name};
+use crate::project_install;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -30,18 +31,23 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     })?;
 
     let temp_dir = create_temp_dir()?;
-    let result = update_from_assets(&layout, &temp_dir, local_asset, addon_asset);
+    let result =
+        update_from_assets(&layout, &temp_dir, local_asset, addon_asset).and_then(|addon_source| {
+            update_project_addon(options.project_dir.as_deref(), &addon_source)
+        });
     let _ = fs::remove_dir_all(&temp_dir);
     result
 }
 
 struct UpdateOptions {
     version: String,
+    project_dir: Option<PathBuf>,
 }
 
 impl UpdateOptions {
     fn parse(args: Vec<&str>) -> Result<Self, String> {
         let mut version = "latest".to_string();
+        let mut project_dir = None;
         let mut index = 0;
 
         while index < args.len() {
@@ -56,6 +62,16 @@ impl UpdateOptions {
                 arg if arg.starts_with("--version=") => {
                     version = arg.trim_start_matches("--version=").to_string();
                 }
+                "--project" => {
+                    index += 1;
+                    let value = args
+                        .get(index)
+                        .ok_or_else(|| "--project requires a path".to_string())?;
+                    project_dir = Some(PathBuf::from(value));
+                }
+                arg if arg.starts_with("--project=") => {
+                    project_dir = Some(PathBuf::from(arg.trim_start_matches("--project=")));
+                }
                 "-h" | "--help" => {
                     print_help();
                     return Err("".to_string());
@@ -65,7 +81,10 @@ impl UpdateOptions {
             index += 1;
         }
 
-        Ok(Self { version })
+        Ok(Self {
+            version,
+            project_dir,
+        })
     }
 }
 
@@ -77,6 +96,7 @@ Update the installed Fennara local runtime and addon package.
 Usage:
   fennara update
   fennara update --version 0.2.8
+  fennara update --project <path>
 "
     );
 }
@@ -86,7 +106,7 @@ fn update_from_assets(
     temp_dir: &Path,
     local_asset: &str,
     addon_asset: &str,
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
     let local_dir = temp_dir.join("local");
     let addon_dir = temp_dir.join("addon");
     download_zip_to_dir(local_asset, &local_dir)?;
@@ -128,6 +148,26 @@ fn update_from_assets(
         println!(
             "cli: Windows keeps the running fennara.exe in place; rerun the bootstrap installer when the CLI binary itself must update"
         );
+    }
+
+    Ok(addon_target.join("addons").join("fennara"))
+}
+
+fn update_project_addon(project_dir: Option<&Path>, addon_source: &Path) -> Result<(), String> {
+    if let Some(project_dir) = project_dir {
+        project_install::install_addon(project_dir, addon_source)?;
+        println!("project addon updated: {}", display_path(project_dir));
+        return Ok(());
+    }
+
+    let current_dir =
+        env::current_dir().map_err(|err| format!("failed to read the current directory: {err}"))?;
+    if project_install::is_godot_project(&current_dir) {
+        project_install::install_addon(&current_dir, addon_source)?;
+        println!("project addon updated: {}", display_path(&current_dir));
+    } else {
+        println!("project addon: not updated because the current directory is not a Godot project");
+        println!("run from a folder with project.godot or pass --project <path>");
     }
 
     Ok(())

@@ -44,7 +44,7 @@ Fennara CLI {VERSION}
 Usage:
   fennara doctor [--repair]
   fennara install [--project <path>] [--source <path>]
-  fennara update [--version <version>]
+  fennara update [--version <version>] [--project <path>]
   fennara --version
   fennara --help
 

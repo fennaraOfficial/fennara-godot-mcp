@@ -32,8 +32,8 @@ fennara install
 When a new release is available, update the local Fennara runtime and addon package:
 
 ```bash
+cd path/to/your-godot-project
 fennara update
-fennara install
 ```
 
 ## Setup Steps
