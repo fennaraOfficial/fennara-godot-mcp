@@ -75,7 +75,10 @@ function isAddonBinary(relative) {
     return relative === "bin/libfennara.linux.editor.x86_64.so";
   }
   if (platform === "macos") {
-    return relative.startsWith("bin/libfennara.macos.editor.framework/");
+    return (
+      relative === "bin/libfennara.macos.editor.framework" ||
+      relative.startsWith("bin/libfennara.macos.editor.framework/")
+    );
   }
   throw new Error(`Unsupported platform: ${platform}`);
 }
