@@ -26,7 +26,7 @@ Options:
 
 $repo = "fennaraOfficial/fennara-godot-mcp"
 $platform = "windows"
-$osArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+$osArchitecture = ([string][System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture).ToLowerInvariant()
 $arch = switch ($osArchitecture) {
   "x64" { "x86_64" }
   "arm64" { "arm64" }
