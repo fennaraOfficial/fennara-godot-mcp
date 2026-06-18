@@ -101,11 +101,11 @@ fn install_from_assets(
     fs::create_dir_all(&version_dir)
         .map_err(|err| format!("failed to create {}: {err}", display_path(&version_dir)))?;
 
-    copy_file(
+    copy_existing_launcher(
         &local_dir.join("bin").join(binary_name("fennara-mcp")),
         &layout.bin_dir.join(binary_name("fennara-mcp")),
     )?;
-    copy_file(
+    copy_existing_launcher(
         &local_dir.join("bin").join(binary_name("fennara-daemon")),
         &layout.bin_dir.join(binary_name("fennara-daemon")),
     )?;
@@ -271,6 +271,28 @@ fn copy_file(source: &Path, target: &Path) -> Result<(), String> {
         )
     })?;
     Ok(())
+}
+
+fn copy_existing_launcher(source: &Path, target: &Path) -> Result<(), String> {
+    if !source.is_file() {
+        return Err(format!("missing package file: {}", display_path(source)));
+    }
+
+    if !target.exists() {
+        return copy_file(source, target);
+    }
+
+    match copy_file(source, target) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            println!(
+                "warning: kept existing launcher because it could not be replaced: {}",
+                display_path(target)
+            );
+            println!("warning: {error}");
+            Ok(())
+        }
+    }
 }
 
 fn copy_dir(source: &Path, target: &Path) -> Result<(), String> {
