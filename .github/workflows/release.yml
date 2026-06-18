@@ -93,6 +93,8 @@ jobs:
             fennara-cpp/.sconsign.dblite
             fennara-cpp/godot-cpp/bin/
             fennara-cpp/godot-cpp/gen/
+            fennara-cpp/godot-cpp/src/**/*.obj
+            fennara-cpp/godot-cpp/src/**/*.pdb
           key: godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-${{ hashFiles('fennara-cpp/godot-cpp/SConstruct', 'fennara-cpp/godot-cpp/tools/**/*.py', 'fennara-cpp/godot-cpp/include/**/*.h', 'fennara-cpp/godot-cpp/include/**/*.hpp', 'fennara-cpp/godot-cpp/gdextension/*.json') }}
           restore-keys: |
             godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-
