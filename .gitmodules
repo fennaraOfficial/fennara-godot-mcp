@@ -1,0 +1,3 @@
+[submodule "fennara-cpp/godot-cpp"]
+	path = fennara-cpp/godot-cpp
+	url = https://github.com/godotengine/godot-cpp.git

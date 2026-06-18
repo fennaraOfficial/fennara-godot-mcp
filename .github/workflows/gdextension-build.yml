@@ -83,10 +83,10 @@ jobs:
             fennara-cpp/.sconsign.dblite
             fennara-cpp/godot-cpp/bin/
             fennara-cpp/godot-cpp/gen/
-          key: gdextension-${{ runner.os }}-${{ matrix.platform }}-editor-${{ hashFiles('fennara-cpp/SConstruct', 'fennara-cpp/godot-cpp/SConstruct', 'fennara-cpp/godot-cpp/tools/**/*.py', 'fennara-cpp/godot-cpp/include/**/*.h', 'fennara-cpp/godot-cpp/include/**/*.hpp', 'fennara-cpp/godot-cpp/gdextension/*.json') }}
+          key: godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-${{ hashFiles('fennara-cpp/godot-cpp/SConstruct', 'fennara-cpp/godot-cpp/tools/**/*.py', 'fennara-cpp/godot-cpp/include/**/*.h', 'fennara-cpp/godot-cpp/include/**/*.hpp', 'fennara-cpp/godot-cpp/gdextension/*.json') }}
           restore-keys: |
-            gdextension-${{ runner.os }}-${{ matrix.platform }}-editor-
-            gdextension-${{ runner.os }}-${{ matrix.platform }}-
+            godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-
+            godot-cpp-${{ runner.os }}-${{ matrix.platform }}-
 
       - name: Build GDExtension
         if: steps.source.outputs.available == 'true'

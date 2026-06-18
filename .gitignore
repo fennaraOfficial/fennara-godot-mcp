@@ -4,8 +4,9 @@
 *.log
 user://
 
-# Keep packaged preview binaries in this repo.
-!addons/fennara/bin/*.dll
-!addons/fennara/bin/*.exe
-!addons/fennara/bin/*.so
-!addons/fennara/bin/*.dylib
+fennara-cpp/.scons_cache/
+fennara-cpp/.sconsign.dblite
+fennara-cpp/build/
+
+godot/addons/fennara/bin/*
+!godot/addons/fennara/bin/.gitkeep

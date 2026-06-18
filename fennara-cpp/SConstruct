@@ -1,0 +1,42 @@
+#!/usr/bin/env python
+
+import os
+import glob
+
+CacheDir(os.environ.get("SCONS_CACHE", ".scons_cache/"))
+
+env = SConscript("godot-cpp/SConstruct")
+
+if env["platform"] == "windows":
+    env.Append(LIBS=["comdlg32"])
+
+# Auto-discover include directories
+for root, dirs, files in os.walk("include"):
+    env.Append(CPPPATH=[root])
+
+# Keep build files inside this project
+build_dir = "build"
+env.VariantDir(build_dir, "src", duplicate=0)
+
+# Discover sources
+sources = glob.glob("src/**/*.cpp", recursive=True)
+sources += glob.glob("src/**/*.c", recursive=True)
+
+build_sources = [s.replace("src", build_dir, 1) for s in sources]
+
+# Output binary to the installable Godot addon payload.
+out_dir = "../godot/addons/fennara/bin"
+
+if env["platform"] == "macos":
+    file_name = "libfennara.{}.{}".format(env["platform"], env["target"])
+    library = env.SharedLibrary(
+        "{}/{}.framework/{}".format(out_dir, file_name, file_name),
+        source=build_sources,
+    )
+else:
+    library = env.SharedLibrary(
+        "{}/libfennara{}{}".format(out_dir, env["suffix"], env["SHLIBSUFFIX"]),
+        source=build_sources,
+    )
+
+Default(library)
