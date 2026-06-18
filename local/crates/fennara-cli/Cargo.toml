@@ -11,3 +11,5 @@ path = "src/main.rs"
 
 [dependencies]
 serde_json = "1.0"
+ureq = { version = "2.12", features = ["json"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

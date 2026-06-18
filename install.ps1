@@ -44,12 +44,18 @@ $releaseApi = if ($Version -eq "latest") {
 
 Write-Host "Fetching Fennara release metadata..."
 $release = Invoke-RestMethod -Uri $releaseApi -Headers @{ "User-Agent" = "fennara-install" }
-$asset = $release.assets |
+$localAsset = $release.assets |
   Where-Object { $_.name -like "fennara-local-$platform-$arch-v*.zip" } |
   Select-Object -First 1
+$addonAsset = $release.assets |
+  Where-Object { $_.name -like "fennara-addon-$platform-$arch-v*.zip" } |
+  Select-Object -First 1
 
-if (-not $asset) {
+if (-not $localAsset) {
   throw "Could not find fennara-local-$platform-$arch asset in release $($release.tag_name)."
+}
+if (-not $addonAsset) {
+  throw "Could not find fennara-addon-$platform-$arch asset in release $($release.tag_name)."
 }
 
 $appDir = if ($InstallDir) { $InstallDir } else { Join-Path $env:LOCALAPPDATA "Fennara" }
@@ -59,17 +65,23 @@ $cacheDir = Join-Path $appDir "cache"
 $logsDir = Join-Path $appDir "logs"
 $toolsDir = Join-Path $appDir "tools"
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "fennara-install-$([System.Guid]::NewGuid())"
-$zipPath = Join-Path $tempDir $asset.name
-$extractDir = Join-Path $tempDir "extract"
+$localZipPath = Join-Path $tempDir $localAsset.name
+$addonZipPath = Join-Path $tempDir $addonAsset.name
+$localExtractDir = Join-Path $tempDir "local"
+$addonExtractDir = Join-Path $tempDir "addon"
 
-New-Item -ItemType Directory -Force -Path $tempDir, $extractDir, $binDir, $versionsDir, $cacheDir, $logsDir, $toolsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $tempDir, $localExtractDir, $addonExtractDir, $binDir, $versionsDir, $cacheDir, $logsDir, $toolsDir | Out-Null
 
 try {
-  Write-Host "Downloading $($asset.name)..."
-  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers @{ "User-Agent" = "fennara-install" }
-  Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
+  Write-Host "Downloading $($localAsset.name)..."
+  Invoke-WebRequest -Uri $localAsset.browser_download_url -OutFile $localZipPath -Headers @{ "User-Agent" = "fennara-install" }
+  Expand-Archive -LiteralPath $localZipPath -DestinationPath $localExtractDir -Force
 
-  $versionFile = Join-Path $extractDir "VERSION"
+  Write-Host "Downloading $($addonAsset.name)..."
+  Invoke-WebRequest -Uri $addonAsset.browser_download_url -OutFile $addonZipPath -Headers @{ "User-Agent" = "fennara-install" }
+  Expand-Archive -LiteralPath $addonZipPath -DestinationPath $addonExtractDir -Force
+
+  $versionFile = Join-Path $localExtractDir "VERSION"
   if (-not (Test-Path $versionFile)) {
     throw "Downloaded package is missing VERSION."
   }
@@ -80,10 +92,11 @@ try {
   }
 
   $versionDir = Join-Path $versionsDir $packageVersion
+  $addonDir = Join-Path $versionDir "addon"
   New-Item -ItemType Directory -Force -Path $versionDir | Out-Null
 
   foreach ($name in @("fennara.exe", "fennara-mcp.exe", "fennara-daemon.exe")) {
-    $source = Join-Path $extractDir "bin\$name"
+    $source = Join-Path $localExtractDir "bin\$name"
     if (-not (Test-Path $source)) {
       throw "Downloaded package is missing $name."
     }
@@ -91,17 +104,23 @@ try {
   }
 
   foreach ($name in @("fennara-mcp-runtime.exe", "fennara-daemon-runtime.exe")) {
-    $source = Join-Path $extractDir "bin\$name"
+    $source = Join-Path $localExtractDir "bin\$name"
     if (-not (Test-Path $source)) {
       throw "Downloaded package is missing $name."
     }
     Copy-Item -LiteralPath $source -Destination (Join-Path $versionDir $name) -Force
   }
 
+  if (Test-Path $addonDir) {
+    Remove-Item -LiteralPath $addonDir -Recurse -Force
+  }
+  Copy-Item -LiteralPath $addonExtractDir -Destination $addonDir -Recurse -Force
+
   $manifest = [ordered]@{
     version = $packageVersion
     mcp_runtime = "versions/$packageVersion/fennara-mcp-runtime.exe"
     daemon_runtime = "versions/$packageVersion/fennara-daemon-runtime.exe"
+    addon = "versions/$packageVersion/addon/addons/fennara"
   }
   $manifest | ConvertTo-Json | Set-Content -Encoding UTF8 -Path (Join-Path $appDir "current.json")
 
