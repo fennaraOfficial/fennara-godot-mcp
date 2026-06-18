@@ -37,7 +37,7 @@ It used Fennara tools for:
 - GDScript diagnostics
 - scene validation
 - runtime error feedback
-- SemanticSearch
+- project and scene inspection
 
 The first implementation did not work perfectly. That was the useful part.
 

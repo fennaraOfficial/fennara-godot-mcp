@@ -32,10 +32,6 @@ The concise model-facing result returned after a tool call. Fennara results shou
 
 A daemon-managed Godot runtime session used for runtime inspection, logs, validation, and screenshot workflows.
 
-**SemanticSearch**
-
-Project-aware search over indexed Godot code and context, used when exact files or symbols are not already known.
-
 **Project Guidance**
 
 Generated guidance files placed in a Godot project so AI coding agents know when and how to use Fennara.

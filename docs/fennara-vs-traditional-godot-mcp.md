@@ -57,7 +57,7 @@ Fennara focuses on feedback:
 - node properties
 - class/API inspection
 - screenshots
-- SemanticSearch
+- generated project guidance
 - patch-and-rerun workflows
 
 ## The Difference

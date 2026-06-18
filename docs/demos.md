@@ -1,50 +1,29 @@
-# Fennara Demos
+# Demos
 
-This page collects Fennara demo videos showing different Godot AI and MCP workflows.
+These videos show Fennara used with Godot projects and MCP workflows.
 
-## Real Existing Project: GDQuest Open RPG
+## Featured Videos
 
-https://www.youtube.com/watch?v=0Egu3S-9MM0
+| Video | Notes |
+| --- | --- |
+| [![This Godot Plugin Revolutionizes AI Game Development Forever Fennara + Claude Fable 5](https://i.ytimg.com/vi/pijlHyiOnz4/hqdefault.jpg)](https://www.youtube.com/watch?v=pijlHyiOnz4)<br>[This Godot Plugin Revolutionizes AI Game Development Forever Fennara + Claude Fable 5](https://www.youtube.com/watch?v=pijlHyiOnz4) | External walkthrough using Fennara with Godot and Claude. |
+| [![This Godot Plugin Transforms AI Game Development Forever (Fennara)](https://i.ytimg.com/vi/wKln8248y2M/hqdefault.jpg)](https://www.youtube.com/watch?v=wKln8248y2M)<br>[This Godot Plugin Transforms AI Game Development Forever (Fennara)](https://www.youtube.com/watch?v=wKln8248y2M) | External walkthrough focused on the Fennara workflow. |
+| [![I Gave Codex an AI Game Image and It Built This in Godot](https://i.ytimg.com/vi/ztbH6zBhxMc/hqdefault.jpg)](https://www.youtube.com/watch?v=ztbH6zBhxMc)<br>[I Gave Codex an AI Game Image and It Built This in Godot](https://www.youtube.com/watch?v=ztbH6zBhxMc) | Fennara turns a game concept image into a playable Godot project. |
+| [![Fennara MCP Builds a Katamari-Style Godot Game](https://i.ytimg.com/vi/8y2Ub8pgNSs/hqdefault.jpg)](https://www.youtube.com/watch?v=8y2Ub8pgNSs)<br>[Fennara MCP Builds a Katamari-Style Godot Game](https://www.youtube.com/watch?v=8y2Ub8pgNSs) | A saved Godot demo project built with Fennara. |
+| [![Godot MCPs Ranked: The Best AI Tool for Godot](https://i.ytimg.com/vi/2vSYP7GyA5U/hqdefault.jpg)](https://www.youtube.com/watch?v=2vSYP7GyA5U)<br>[Godot MCPs Ranked: The Best AI Tool for Godot](https://www.youtube.com/watch?v=2vSYP7GyA5U) | Comparison video about Godot MCP workflows. |
 
-An AI coding agent connects to Godot through Fennara MCP and works on GDQuest's open-source Godot 4 Open RPG project. The test shows Fennara helping the agent inspect an existing codebase, receive Godot feedback, patch a broken script, and continue.
+## More From The Fennara Channel
 
-## Kantari Godot Demo Repository
+The [Fennara YouTube channel](https://www.youtube.com/@fennaraOfficial) has more Godot MCP demos:
 
-https://www.youtube.com/watch?v=8y2Ub8pgNSs
-
-https://github.com/fennaraOfficial/kantari-godot-demo
-
-Kantari is a public Godot demo project made with Fennara. The repository includes a real saved Godot project with scenes, scripts, project settings, and the Fennara addon payload used during the workflow.
-
-## Asteroid Rush Godot Demo Repository
-
-https://youtu.be/ztbH6zBhxMc
-
-https://github.com/fennaraOfficial/fennara-asteroid-rush-demo
-
-Asteroid Rush is a public Godot demo project made with Fennara. The repository includes a stylized 3D arcade space runner with modular saved scenes, a visible editor-authored space environment, rocket-powered asteroid platforms, collectibles, HUD, particles, lighting, and a playable third-person controller.
-
-## Cinematic 2D Boss Fight With Fennara MCP
-
-https://youtu.be/KMRGHtficr8
-
-An AI coding agent connects to Godot through Fennara MCP and builds a playable 2D boss encounter with real scenes, scripts, collision, UI, boss attacks, phase transitions, hazards, victory/defeat states, diagnostics, validation, and runtime fixes.
-
-## FPS Prototype Built Inside Godot
-
-https://youtu.be/d5_PGbB_U8I
-
-This demo shows Fennara building a small first-person prototype from an empty Godot project, including a blockout scene and player controller workflow.
-
-## Adventure Capitalist-Style Clone
-
-https://youtu.be/DnvdzypwLik
-
-This demo shows a longer game-systems workflow: business progression, managers, upgrades, save/load, offline earnings, investor prestige, shaders, particles, and scalable architecture.
+| Video | Notes |
+| --- | --- |
+| [![I Tested Fennara MCP on a Real Godot RPG Project](https://i.ytimg.com/vi/0Egu3S-9MM0/hqdefault.jpg)](https://www.youtube.com/watch?v=0Egu3S-9MM0)<br>[I Tested Fennara MCP on a Real Godot RPG Project](https://www.youtube.com/watch?v=0Egu3S-9MM0) | Fennara working against GDQuest's Open RPG project, including a broken script and repair loop. |
+| [![Codex + Fennara MCP Built This Godot Boss Fight](https://i.ytimg.com/vi/KMRGHtficr8/hqdefault.jpg)](https://www.youtube.com/watch?v=KMRGHtficr8)<br>[Codex + Fennara MCP Built This Godot Boss Fight](https://www.youtube.com/watch?v=KMRGHtficr8) | A 2D boss encounter built with scenes, scripts, attacks, validation, and runtime fixes. |
+| [![Fennara the Godot AI Agent - Build Games Faster in Godot](https://i.ytimg.com/vi/d5_PGbB_U8I/hqdefault.jpg)](https://www.youtube.com/watch?v=d5_PGbB_U8I)<br>[Fennara the Godot AI Agent - Build Games Faster in Godot](https://www.youtube.com/watch?v=d5_PGbB_U8I) | First-person prototype workflow from an empty Godot project. |
+| [![Using Fennara to build a Fully playable Incremental Game in 4 hours](https://i.ytimg.com/vi/DnvdzypwLik/hqdefault.jpg)](https://www.youtube.com/watch?v=DnvdzypwLik)<br>[Using Fennara to build a Fully playable Incremental Game in 4 hours](https://www.youtube.com/watch?v=DnvdzypwLik) | Longer game-systems workflow with progression, upgrades, save/load, and polish passes. |
 
 ## What To Watch For
-
-Across the videos, the important part is not only that Fennara can produce a result.
 
 The important part is the loop:
 

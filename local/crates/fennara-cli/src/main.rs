@@ -2,6 +2,7 @@ mod app_layout;
 mod csharp_support;
 mod doctor;
 mod mcp_setup;
+mod project_guidance;
 mod project_install;
 mod release_package;
 mod release_update;

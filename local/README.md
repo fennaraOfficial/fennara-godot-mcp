@@ -31,6 +31,14 @@ local/target/debug/fennara-daemon.exe
 at build time and forwards tool calls to the local daemon. It does not need an
 external schema service at runtime.
 
+`fennara install` also writes generated project guidance from `local/templates/`
+into the Godot project:
+
+```text
+AGENTS.md
+.fennara/ai/guidelines.md
+```
+
 Build:
 
 ```powershell

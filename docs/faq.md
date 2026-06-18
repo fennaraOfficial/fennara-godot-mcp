@@ -2,7 +2,7 @@
 
 ## Is Fennara only a code generator?
 
-No. Fennara is a Godot-aware agent workflow. It can work with project files, scenes, diagnostics, runtime errors, screenshots, SemanticSearch, and Godot editor context.
+No. Fennara is a Godot-aware agent workflow. It can work with project files, scenes, diagnostics, runtime errors, screenshots, and Godot editor context.
 
 ## Is Fennara just another Godot MCP command server?
 
@@ -14,8 +14,11 @@ No. Fennara is not trying to make Godot optional. It is designed to make AI agen
 
 ## How should I install Fennara?
 
-Use the setup guide:
+Use the setup guide in this repository:
 
-https://www.fennara.io/docs/get-started
+```bash
+fennara install
+fennara mcp-setup --help
+```
 
-The setup flow handles the local device identity, API key flow, plugin install, local MCP server install, and supported MCP app configuration.
+The setup flow installs the Godot addon, downloads the local MCP runtime package, writes generated project guidance, and configures supported MCP apps.

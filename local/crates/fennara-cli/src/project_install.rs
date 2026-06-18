@@ -1,5 +1,6 @@
 use crate::app_layout::display_path;
 use crate::csharp_support;
+use crate::project_guidance;
 use crate::release_package;
 use std::env;
 use std::fs;
@@ -25,6 +26,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
         }
     };
     install_addon(&project_dir, &source)?;
+    project_guidance::write(&project_dir)?;
     if options.csharp {
         csharp_support::install()?;
     }
@@ -32,6 +34,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     println!("Installed Fennara");
     println!("version: {version}");
     println!("project: {}", display_path(&project_dir));
+    println!("guidance: wrote AGENTS.md and .fennara/ai/guidelines.md");
     if options.csharp {
         println!("csharp: installed");
     }

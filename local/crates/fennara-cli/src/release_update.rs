@@ -1,4 +1,5 @@
 use crate::app_layout::display_path;
+use crate::project_guidance;
 use crate::project_install;
 use crate::release_package;
 use std::path::PathBuf;
@@ -18,13 +19,16 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     let package = release_package::ensure_package(&options.version)?;
     let project_version = project_install::project_addon_version(&project_dir);
     if project_version.as_deref() == Some(package.version.as_str()) {
+        project_guidance::write(&project_dir)?;
         println!("Fennara is already up to date.");
         println!("version: {}", package.version);
         println!("project: {}", display_path(&project_dir));
+        println!("guidance: refreshed AGENTS.md and .fennara/ai/guidelines.md");
         return Ok(());
     }
 
     project_install::install_addon(&project_dir, &package.addon_dir)?;
+    project_guidance::write(&project_dir)?;
     println!("Updated Fennara");
     println!(
         "from: {}",
@@ -32,6 +36,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     );
     println!("to: {}", package.version);
     println!("project: {}", display_path(&project_dir));
+    println!("guidance: refreshed AGENTS.md and .fennara/ai/guidelines.md");
     Ok(())
 }
 

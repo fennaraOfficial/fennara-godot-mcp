@@ -1,150 +1,161 @@
 # Fennara Godot MCP
 
-Fennara connects AI coding agents to real Godot feedback so they can inspect, fix, and rerun work instead of guessing from files alone.
+[![Discord](https://img.shields.io/badge/Discord-Join%20Fennara-5865F2?logo=discord&logoColor=white)](https://discord.com/invite/3fF4ft9PTk)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-Game development breaks in places normal coding agents cannot see: script errors, node warnings, runtime errors, diagnostics, missing resources, nested subresources, scene state, and screenshots. Fennara gives agents that Godot context through the Godot plugin and local MCP server.
+Fennara gives MCP clients a live connection to Godot. Agents can inspect scenes, check scripts, capture runtime errors, and validate changes inside the editor instead of guessing from project files alone.
 
-## Start Here
+It is built for Godot projects where file edits are not enough. Node paths, exported variables, scene resources, runtime logs, screenshots, and editor diagnostics all matter.
 
-Install the Fennara CLI:
+## Quick Start
+
+Follow these steps in order.
+
+### 1. Install The CLI
+
+Windows:
 
 ```powershell
 irm https://raw.githubusercontent.com/fennaraOfficial/fennara-godot-mcp/main/install.ps1 | iex
 ```
 
+macOS / Linux:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fennaraOfficial/fennara-godot-mcp/main/install.sh | sh
 ```
 
-Then check the local install:
+Check the install:
 
 ```bash
 fennara doctor
 ```
 
-Then install the Godot addon from inside your Godot project:
+### 2. Add Fennara To A Godot Project
+
+Run this from the Godot project folder:
 
 ```bash
 cd path/to/your-godot-project
 fennara install
 ```
 
-For a C# Godot project, install C# support during setup:
+For a C# project:
 
 ```bash
 fennara install --csharp
 ```
 
-Then configure your MCP app:
+Then open the project in Godot.
+
+`fennara install` also writes project guidance for AI coding agents:
+
+```text
+AGENTS.md
+.fennara/ai/guidelines.md
+```
+
+### 3. Configure Your MCP App
+
+Claude Code and Claude Desktop:
 
 ```bash
 fennara mcp-setup --claude
 ```
 
-For Gemini or Antigravity:
+Gemini and Antigravity:
 
 ```bash
 fennara mcp-setup --gemini
-fennara mcp-setup --antigravity
 ```
 
-Other supported MCP apps:
+Cursor:
 
 ```bash
 fennara mcp-setup --cursor
-fennara mcp-setup --vscode
-fennara mcp-setup --cline
-fennara mcp-setup --opencode
-fennara mcp-setup --windsurf
-fennara mcp-setup --kiro
+```
+
+Codex:
+
+```bash
 fennara mcp-setup --codex
 ```
 
-When a new release is available, update from inside the project:
+More targets:
+
+```bash
+fennara mcp-setup --help
+```
+
+Restart the MCP app after setup so it reloads the Fennara server.
+
+### 4. Verify It Works
+
+With the Godot project open, ask your MCP app:
+
+```text
+Use Fennara MCP to run fennara_status and tell me which Godot project is connected.
+```
+
+If the project path is correct, the MCP server and Godot plugin are talking.
+
+### 5. Update Later
+
+Run this from the Godot project folder:
 
 ```bash
 cd path/to/your-godot-project
 fennara update
 ```
 
-## Setup Steps
+`fennara update` refreshes the project addon, local runtime package, and generated Fennara guidance files for the current release.
 
-1. Install the Fennara CLI.
-2. Run `fennara doctor` to verify the CLI is available.
-3. Open a terminal in your Godot project folder.
-4. Run `fennara install`.
-5. Open the Godot project and enable the Fennara addon.
-6. Run `fennara mcp-setup --claude`, `fennara mcp-setup --gemini`, or `fennara mcp-setup --antigravity`.
-7. Restart your MCP app so it reloads the Fennara MCP server.
+## Tools
 
-Other MCP apps can work when they support local stdio MCP servers and are configured manually.
+Fennara exposes a small set of Godot-aware tools:
 
-## How to Confirm It Works
+- write or update project files and return diagnostics
+- run one-off scene edit scripts
+- inspect scene trees, nodes, resources, and Godot classes
+- validate scenes
+- capture screenshots
+- start runtime sessions and read runtime logs
+- run small runtime scripts against a live scene
 
-After setup, open your MCP app and ask:
-
-```text
-Use Fennara MCP to run fennara_status and tell me which Godot project is connected.
-```
-
-If Fennara reports the expected Godot project, the MCP server and plugin are connected.
-
-If it does not appear, restart the MCP app and check:
-
-- the Fennara installer finished successfully
-- your MCP app is configured to run `fennara-mcp`
-- your Godot project is open
-
-## What Fennara Tools Do
-
-Fennara exposes Godot-aware tools for agent workflows:
-
-- file and script writes with diagnostics
-- one-off scene edit scripts
-- scene tree inspection
-- node property inspection
-- Godot class/API inspection
-- runtime error capture
-- scene screenshots
-- scene validation
-
-For the full tools reference, see:
-
-https://www.fennara.io/docs/tools
+The goal is not to replace an agent's normal file tools. Fennara gives the missing Godot feedback loop.
 
 ## Demos
 
-Start with the real-project test: Fennara MCP on GDQuest's open-source Godot 4 Open RPG project.
+Start here:
 
-[![Fennara MCP tested on a real Godot RPG project](https://img.youtube.com/vi/0Egu3S-9MM0/maxresdefault.jpg)](https://www.youtube.com/watch?v=0Egu3S-9MM0)
+[![I Gave Codex an AI Game Image and It Built This in Godot](https://i.ytimg.com/vi/ztbH6zBhxMc/hqdefault.jpg)](https://www.youtube.com/watch?v=ztbH6zBhxMc)
 
-In the demo, an AI coding agent works on an existing RPG codebase instead of an empty project. The first script breaks, Fennara returns Godot feedback, and the agent patches the implementation.
+More videos:
 
-More demos:
+- [Fennara MCP Builds a Katamari-Style Godot Game](https://www.youtube.com/watch?v=8y2Ub8pgNSs)
+- [Godot MCPs Ranked: The Best AI Tool for Godot](https://www.youtube.com/watch?v=2vSYP7GyA5U)
+- [This Godot Plugin Transforms AI Game Development Forever](https://www.youtube.com/watch?v=wKln8248y2M)
+- [This Godot Plugin Revolutionizes AI Game Development Forever](https://www.youtube.com/watch?v=pijlHyiOnz4)
 
-- [Open RPG demo breakdown](docs/open-rpg-demo.md)
-- [More Fennara demos](docs/demos.md)
-- [Fennara vs traditional Godot MCP](docs/fennara-vs-traditional-godot-mcp.md)
+See [Demos](docs/demos.md) for more videos from the Fennara channel.
 
-## Useful Links
+## Repository
 
-- Setup guide: https://www.fennara.io/docs/get-started
-- MCP setup: https://www.fennara.io/docs/mcp
-- Godot tools docs: https://www.fennara.io/docs/tools
-- Godot MCP overview: https://www.fennara.io/godot-mcp
-- Godot AI plugin overview: https://www.fennara.io/godot-ai-plugin
-- Website: https://www.fennara.io
-
-## Repository Status
-
-This repository is being prepared as the public source home for Fennara's Godot MCP tooling. Documentation, build instructions, and release workflows are being added incrementally.
-
-Start with:
+Useful starting points:
 
 - [Repo map](docs/repo-map.md)
 - [Architecture](docs/architecture.md)
+- [Demos](docs/demos.md)
+- [Manual install notes](docs/manual-install.md)
+- [Release process](docs/release.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
+
+## Community
+
+Questions, setup help, and early feedback are welcome on Discord:
+
+https://discord.com/invite/3fF4ft9PTk
 
 ## License
 
