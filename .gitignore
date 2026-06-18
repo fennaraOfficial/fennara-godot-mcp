@@ -10,5 +10,8 @@ fennara-cpp/build/
 
 local/target/
 
+dist/
+.package-preview/
+
 godot/addons/fennara/bin/*
 !godot/addons/fennara/bin/.gitkeep

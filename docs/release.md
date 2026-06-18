@@ -7,7 +7,7 @@ This repository is being prepared for source-based releases. Release automation 
 ## Expected Flow
 
 1. Update the release version with `node scripts/set-version.mjs <x.y.z>`.
-2. Build platform artifacts from the release commit.
+2. Run the manual Package Preview workflow from the release commit.
 3. Verify artifacts locally.
 4. Create a GitHub release tag such as `v0.1.0`.
 5. Upload local tool archives and the Godot plugin package.
@@ -23,6 +23,10 @@ This repository is being prepared for source-based releases. Release automation 
 - the C++ plugin version reported by the Godot dock
 
 Pull requests that touch versioned files run `node scripts/check-version.mjs` to catch drift before merge.
+
+## Package Preview
+
+The manual Package Preview workflow builds the Godot addon and local MCP tools on GitHub-hosted Windows, Linux, and macOS runners. It uploads temporary workflow artifacts only. It does not create tags, publish GitHub releases, or publish installer downloads.
 
 ## Rules
 

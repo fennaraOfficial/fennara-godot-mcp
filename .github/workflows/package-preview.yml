@@ -1,0 +1,100 @@
+name: Package Preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: package ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            arch: x86_64
+            os: windows-latest
+          - platform: linux
+            arch: x86_64
+            os: ubuntu-latest
+          - platform: macos
+            arch: arm64
+            os: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SCons
+        run: pip install scons
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache SCons and godot-cpp outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            fennara-cpp/.scons_cache/
+            fennara-cpp/.sconsign.dblite
+            fennara-cpp/godot-cpp/bin/
+            fennara-cpp/godot-cpp/gen/
+          key: godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-${{ hashFiles('fennara-cpp/godot-cpp/SConstruct', 'fennara-cpp/godot-cpp/tools/**/*.py', 'fennara-cpp/godot-cpp/include/**/*.h', 'fennara-cpp/godot-cpp/include/**/*.hpp', 'fennara-cpp/godot-cpp/gdextension/*.json') }}
+          restore-keys: |
+            godot-cpp-${{ runner.os }}-${{ matrix.platform }}-editor-
+            godot-cpp-${{ runner.os }}-${{ matrix.platform }}-
+
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            local/target
+          key: local-cargo-${{ runner.os }}-${{ hashFiles('local/Cargo.lock') }}
+          restore-keys: |
+            local-cargo-${{ runner.os }}-
+
+      - name: Build GDExtension
+        working-directory: fennara-cpp
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/fennara-cpp/.scons_cache
+        run: scons platform=${{ matrix.platform }} target=editor
+
+      - name: Build local tools
+        working-directory: local
+        run: cargo build --release --locked
+
+      - name: Assemble preview archives
+        run: node scripts/package-preview.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+
+      - name: Upload preview archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: fennara-package-preview-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error

@@ -6,10 +6,10 @@ Current scripts:
 
 - `set-version.mjs`: updates `VERSION`, Rust package metadata, the lockfile, and the C++ plugin version.
 - `check-version.mjs`: verifies versioned files are in sync.
+- `package-preview.mjs`: assembles temporary addon and local tool zip archives after CI builds.
 
 Planned responsibilities:
 
-- package assembly
 - release artifact checks
 - local development helpers
 
