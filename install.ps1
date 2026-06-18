@@ -26,12 +26,7 @@ Options:
 
 $repo = "fennaraOfficial/fennara-godot-mcp"
 $platform = "windows"
-$osArchitecture = ([string][System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture).ToLowerInvariant()
-$arch = switch ($osArchitecture) {
-  "x64" { "x86_64" }
-  "arm64" { "arm64" }
-  default { throw "Unsupported architecture: $osArchitecture" }
-}
+$arch = "x86_64"
 
 if (-not $InstallDir -and -not $env:LOCALAPPDATA) {
   throw "LOCALAPPDATA is not set."
