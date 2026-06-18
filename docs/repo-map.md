@@ -17,7 +17,7 @@ This file explains the main areas of the Fennara Godot MCP repository.
 | `llms.txt` | Short project index for language models and coding agents. |
 | `LICENSE.md` | Project license. |
 | `THIRD_PARTY_NOTICES.md` | Third-party notices. |
-| `local/` | Rust MCP server, local daemon, and command-line setup/update tools. |
+| `local/` | Rust CLI, MCP server, local daemon, and command-line setup/update tools. |
 | `fennara-cpp/` | C++ Godot GDExtension source. |
 | `godot/addons/fennara/` | Installable Godot addon payload. |
 | `templates/` | Generated project guidance templates. |

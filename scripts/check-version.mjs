@@ -17,13 +17,14 @@ expect(
 );
 
 for (const manifest of [
+  "local/crates/fennara-cli/Cargo.toml",
   "local/crates/fennara-daemon/Cargo.toml",
   "local/crates/fennara-mcp/Cargo.toml",
 ]) {
   expect(manifest, /version\.workspace\s*=\s*true/, "crate version must use workspace.package");
 }
 
-for (const name of ["fennara-daemon", "fennara-mcp"]) {
+for (const name of ["fennara-cli", "fennara-daemon", "fennara-mcp"]) {
   expect(
     "local/Cargo.lock",
     new RegExp(`name = "${escapeRegExp(name)}"\\r?\\nversion = "${escapeRegExp(version)}"`),

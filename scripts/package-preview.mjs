@@ -45,6 +45,7 @@ function packageLocal() {
   const releaseDir = path.join(root, "local", "target", "release");
   const extension = platform === "windows" ? ".exe" : "";
   const binaries = [
+    "fennara",
     "fennara-daemon",
     "fennara-daemon-runtime",
     "fennara-mcp",

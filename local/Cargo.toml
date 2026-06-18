@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/fennara-cli",
     "crates/fennara-daemon",
     "crates/fennara-mcp",
 ]

@@ -28,6 +28,7 @@ update("local/Cargo.toml", (text) => {
 });
 
 for (const manifest of [
+  "local/crates/fennara-cli/Cargo.toml",
   "local/crates/fennara-daemon/Cargo.toml",
   "local/crates/fennara-mcp/Cargo.toml",
 ]) {
