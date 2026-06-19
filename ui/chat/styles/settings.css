@@ -1,0 +1,47 @@
+.settings-dialog {
+  width: min(420px, calc(100vw - 24px));
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 48px var(--shadow);
+}
+
+.settings-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.settings-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-panel h2 {
+  font-size: 14px;
+}
+
+.settings-panel label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+}
+
+.settings-note {
+  margin: 0;
+  color: var(--faint);
+  line-height: 1.4;
+}
+
+.settings-panel menu {
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+}

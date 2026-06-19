@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fennara Chat</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" data-connection="offline">
+      <header class="topbar" aria-label="Fennara toolbar">
+        <button class="icon-button drawer-toggle" type="button" title="Chats" aria-label="Chats" data-toggle-drawer>
+          <svg class="svg-icon svg-fill-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.94 2.25c-1.84 0-3.29 0-4.43.15-1.17.16-2.12.49-2.87 1.24-.75.75-1.08 1.7-1.24 2.87-.15 1.14-.15 2.6-.15 4.43v2.12c0 1.84 0 3.29.15 4.43.16 1.17.49 2.12 1.24 2.87.75.75 1.7 1.08 2.87 1.24 1.14.15 2.6.15 4.43.15h4.12c.31 0 .61 0 .91-.01H15c.01 0 .03 0 .04-.01 1.38 0 2.52-.03 3.45-.15 1.17-.16 2.12-.49 2.87-1.24.75-.75 1.08-1.7 1.24-2.87.15-1.14.15-2.6.15-4.43v-2.12c0-1.84 0-3.29-.15-4.43-.16-1.17-.49-2.12-1.24-2.87-.75-.75-1.7-1.08-2.87-1.24-.93-.12-2.07-.15-3.45-.15H9.94Zm4.31 1.5v16.5H10c-1.91 0-3.26 0-4.29-.14-1.01-.13-1.59-.39-2.01-.81-.42-.42-.68-1-.81-2.01-.14-1.03-.14-2.38-.14-4.29v-2c0-1.91 0-3.26.14-4.29.13-1.01.39-1.59.81-2.01.42-.42 1-.68 2.01-.81 1.03-.14 2.38-.14 4.29-.14h4.25Zm1.5 16.49V3.76c1.03.01 1.86.04 2.54.13 1.01.14 1.59.39 2.01.81.42.42.68 1 .81 2.01.14 1.03.14 2.38.14 4.29v2c0 1.91 0 3.26-.14 4.29-.13 1.01-.39 1.59-.81 2.01-.42.42-1 .68-2.01.81-.68.09-1.51.12-2.54.13Z"></path>
+          </svg>
+        </button>
+        <h1 class="chat-title">Scene Diagnostics</h1>
+        <div class="toolbar" aria-label="Chat toolbar">
+          <button class="icon-button" type="button" title="Share context" aria-label="Share context">
+            <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 12a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z"></path>
+              <path d="m14 6.5-5 3.5"></path>
+              <path d="m14 17.5-5-3.5"></path>
+              <path d="M19 18.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z"></path>
+              <path d="M19 5.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z"></path>
+            </svg>
+          </button>
+          <button class="icon-button" type="button" title="Settings" aria-label="Settings" data-open-settings>
+            <svg class="svg-icon svg-fill-icon" viewBox="0 0 1024 1024" aria-hidden="true">
+              <path d="M600.7 64a32 32 0 0 1 30.5 22.2l35.2 109.4a351.8 351.8 0 0 1 42.4 24.5l112.4-24.2a32 32 0 0 1 34.4 15.4l88.7 153.5a32 32 0 0 1-4 37.5l-77.1 85.1a357.1 357.1 0 0 1 0 49l77.1 85.3a32 32 0 0 1 4 37.5l-88.7 153.6a32 32 0 0 1-34.4 15.3L708.8 803.9a351.8 351.8 0 0 1-42.4 24.5l-35.2 109.4a32 32 0 0 1-30.5 22.2H423.3a32 32 0 0 1-30.5-22.2l-35.1-109.3a351.6 351.6 0 0 1-42.6-24.6l-112.3 24.2a32 32 0 0 1-34.4-15.4L79.7 659.2a32 32 0 0 1 4-37.5l77.1-85.3a357.1 357.1 0 0 1 0-48.9l-77.1-85.2a32 32 0 0 1-4-37.5l88.7-153.6a32 32 0 0 1 34.4-15.3l112.3 24.3a351.6 351.6 0 0 1 42.6-24.6l35.2-109.4A32 32 0 0 1 423.2 64h177.5Zm-23.4 64H446.7l-36.3 113.1-24.5 12a294.1 294.1 0 0 0-34.8 20.1l-22.7 15.4-116.2-25.1-65.3 113.2 79.7 88.2-1.9 27.1a293.1 293.1 0 0 0 0 40.2l1.9 27.1-79.8 88.2 65.3 113.2 116.2-25 22.7 15.3a294.1 294.1 0 0 0 34.8 20.1l24.5 12L446.7 896h130.7l36.5-113.2 24.4-11.9a288.3 288.3 0 0 0 34.8-20.1l22.6-15.3 116.3 25 65.3-113.2-79.8-88.2 1.9-27.1a293.1 293.1 0 0 0 0-40.3l-1.9-27.1 79.8-88.1L812 263.4l-116.3 25-22.6-15.2a287.6 287.6 0 0 0-34.8-20.1l-24.4-11.9L577.3 128ZM512 320a192 192 0 1 1 0 384 192 192 0 0 1 0-384Zm0 64a128 128 0 1 0 0 256 128 128 0 0 0 0-256Z"></path>
+            </svg>
+          </button>
+          <button class="icon-button" type="button" title="New chat" aria-label="New chat" data-new-chat>
+            <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
+          </button>
+          <button class="icon-button" type="button" title="Reload UI" aria-label="Reload UI" data-reload-ui>
+            <span aria-hidden="true">R</span>
+          </button>
+        </div>
+      </header>
+
+      <aside class="chat-drawer" aria-label="Chats drawer" data-chat-drawer>
+        <div class="drawer-top">
+          <button class="drawer-action" type="button" data-new-chat>
+            <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
+            <strong>New Chat</strong>
+          </button>
+        </div>
+        <label class="drawer-search">
+          <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="M20 20l-3.5-3.5"></path>
+          </svg>
+          <input type="search" placeholder="Search chats" aria-label="Search chats" />
+        </label>
+        <section class="drawer-list" aria-label="Recent chats">
+          <h2>Chats</h2>
+          <button class="chat-row active" type="button">
+            <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"></path>
+            </svg>
+            <span>AI Tools and Playtest Setup</span>
+            <time>2h</time>
+          </button>
+          <button class="chat-row" type="button">
+            <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"></path>
+            </svg>
+            <span>Scene diagnostics</span>
+            <time>now</time>
+          </button>
+        </section>
+      </aside>
+
+      <section class="conversation" aria-label="Chat transcript" data-transcript>
+        <article class="message user">
+          <div class="message-body">Can you check the player collision?</div>
+          <div class="message-time">7:29 PM</div>
+        </article>
+
+        <article class="message assistant">
+          <div class="message-body markdown-body">
+            <p>
+              I can inspect the open Godot scene and compare the physics body, collision shape, and movement script.
+            </p>
+            <p>
+              Current context: <a href="#">res://scenes/game.tscn</a> and <a href="#">res://scripts/player.gd</a>.
+            </p>
+          </div>
+          <div class="message-actions" aria-label="Message actions">
+            <button class="copy-message-button" type="button" aria-label="Copy message">
+              <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 11c0-2.83 0-4.24.88-5.12C7.76 5 9.17 5 12 5h3c2.83 0 4.24 0 5.12.88C21 6.76 21 8.17 21 11v5c0 2.83 0 4.24-.88 5.12C19.24 22 17.83 22 15 22h-3c-2.83 0-4.24 0-5.12-.88C6 20.24 6 18.83 6 16v-5Z"></path>
+                <path d="M6 19a3 3 0 0 1-3-3v-6c0-3.77 0-5.66 1.17-6.83C5.34 2 7.23 2 11 2h4a3 3 0 0 1 3 3"></path>
+              </svg>
+            </button>
+            <span>•</span>
+            <span>$0.0063</span>
+          </div>
+        </article>
+
+        <article class="message user">
+          <div class="message-body">
+            Inspect the current scene and tell me why the player collision feels wrong.
+          </div>
+          <div class="message-time">7:33 PM</div>
+        </article>
+
+        <details class="thinking-card" open>
+          <summary>
+            <span class="thinking-chevron" aria-hidden="true">›</span>
+            <span class="thinking-dot" aria-hidden="true"></span>
+            <span>Thinking</span>
+          </summary>
+          <p>
+            I should inspect the selected node, compare its collision shape with the visible sprite,
+            then ask Godot for script diagnostics before suggesting a fix.
+          </p>
+        </details>
+
+        <details class="tool-call" open>
+          <summary>
+            <span class="tool-chevron" aria-hidden="true">›</span>
+            <span class="tool-status success" aria-hidden="true"></span>
+            <code>inspect_scene</code>
+            <span>completed</span>
+          </summary>
+          <dl>
+            <div>
+              <dt>Target</dt>
+              <dd>res://scenes/game.tscn</dd>
+            </div>
+            <div>
+              <dt>Result</dt>
+              <dd>24 nodes, 3 warnings</dd>
+            </div>
+            <div>
+              <dt>Checked</dt>
+              <dd>CollisionShape2D, CharacterBody2D, InputMap</dd>
+            </div>
+          </dl>
+        </details>
+
+        <article class="message assistant">
+          <div class="message-body markdown-body">
+            <p>The scene looks mostly wired correctly. The likely issue is one of these:</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>CollisionShape2D size</td>
+                  <td>Needs visual match</td>
+                </tr>
+                <tr>
+                  <td>Movement method</td>
+                  <td>Use physics-safe movement</td>
+                </tr>
+              </tbody>
+            </table>
+            <figure class="code-block">
+              <figcaption>
+                <span>gdscript</span>
+                <button class="copy-code-button" type="button" aria-label="Copy code" data-copy-code>
+                  <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 11c0-2.83 0-4.24.88-5.12C7.76 5 9.17 5 12 5h3c2.83 0 4.24 0 5.12.88C21 6.76 21 8.17 21 11v5c0 2.83 0 4.24-.88 5.12C19.24 22 17.83 22 15 22h-3c-2.83 0-4.24 0-5.12-.88C6 20.24 6 18.83 6 16v-5Z"></path>
+                    <path d="M6 19a3 3 0 0 1-3-3v-6c0-3.77 0-5.66 1.17-6.83C5.34 2 7.23 2 11 2h4a3 3 0 0 1 3 3"></path>
+                  </svg>
+                </button>
+              </figcaption>
+              <pre><code>func _physics_process(delta):
+    velocity = input_dir * speed
+    move_and_slide()</code></pre>
+            </figure>
+            <figure class="chat-image">
+              <div class="image-canvas inline-image" aria-label="Scene screenshot preview">
+                <span>Game viewport preview</span>
+              </div>
+              <figcaption>Scene screenshot</figcaption>
+            </figure>
+          </div>
+        </article>
+      </section>
+
+      <form class="composer" data-composer>
+        <textarea
+          rows="3"
+          name="prompt"
+          aria-label="Message"
+          placeholder="Ask about the current Godot project..."
+          data-prompt
+        ></textarea>
+        <div class="composer-actions">
+          <button class="primary-button" type="submit">Send</button>
+          <button class="secondary-button" type="button" data-open-settings>OpenRouter key</button>
+        </div>
+      </form>
+
+      <dialog class="settings-dialog" data-settings>
+        <form method="dialog" class="settings-panel">
+          <header>
+            <h2>Chat Settings</h2>
+            <button class="icon-button" type="submit" aria-label="Close settings">x</button>
+          </header>
+          <label>
+            <span>OpenRouter API key</span>
+            <input type="password" autocomplete="off" placeholder="sk-or-..." data-api-key />
+          </label>
+          <label>
+            <span>Model</span>
+            <input type="text" value="openrouter/auto" data-model />
+          </label>
+          <p class="settings-note">
+            Keys should be saved by the local daemon outside the Godot project. This UI shell does not persist secrets yet.
+          </p>
+          <menu>
+            <button class="secondary-button" value="cancel">Cancel</button>
+            <button class="primary-button" value="default" data-save-settings>Save locally</button>
+          </menu>
+        </form>
+      </dialog>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

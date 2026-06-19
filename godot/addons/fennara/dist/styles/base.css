@@ -1,0 +1,123 @@
+:root {
+  color-scheme: dark;
+  --bg: #292929;
+  --surface: #2f2f2f;
+  --surface-raised: #353535;
+  --surface-soft: #303030;
+  --field: #262626;
+  --line: #3f3f3f;
+  --line-strong: #4b4b4b;
+  --text: #e2e2e2;
+  --muted: #a9a9a9;
+  --faint: #7f7f7f;
+  --accent: #f2f2f2;
+  --accent-soft: #d7d7d7;
+  --success: #9bc79a;
+  --warning: #d0ad66;
+  --shadow: rgba(0, 0, 0, 0.28);
+  --radius: 6px;
+  --message-width: 100%;
+  --tool-width: 100%;
+  --thinking-width: 100%;
+  --transcript-width: 900px;
+  font-family: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.app-shell::after {
+  position: absolute;
+  z-index: 10;
+  inset: 44px 0 0;
+  background: rgba(0, 0, 0, 0);
+  content: "";
+  pointer-events: none;
+  transition: background 150ms ease;
+}
+
+.app-shell.drawer-open::after {
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.topbar {
+  position: relative;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 10px;
+  background: var(--bg);
+}
+
+.chat-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--accent-soft);
+  font-weight: 700;
+}
+
+.title-block h1,
+.title-block p,
+.settings-panel h2,
+.tool-card p {
+  margin: 0;
+}
+
+.title-block h1 {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.title-block p {
+  color: var(--muted);
+  font-size: 12px;
+}

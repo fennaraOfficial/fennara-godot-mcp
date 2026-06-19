@@ -1,0 +1,18 @@
+.svg-icon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+}
+
+.svg-fill-icon {
+  fill: currentColor;
+  stroke: none;
+}
+
+.mirrored-icon {
+  transform: scaleX(-1);
+}

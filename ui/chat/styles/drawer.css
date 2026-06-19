@@ -1,0 +1,107 @@
+.chat-drawer {
+  position: absolute;
+  z-index: 20;
+  inset: 44px auto 0 0;
+  width: min(300px, calc(100vw - 30px));
+  height: calc(100% - 44px);
+  border-right: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--text);
+  overflow: auto;
+  transform: translateX(-100%);
+  transition: transform 150ms ease;
+}
+
+.app-shell.drawer-open .chat-drawer {
+  transform: translateX(0);
+}
+
+.drawer-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 10px;
+}
+
+.drawer-action,
+.drawer-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: #f2f2f2;
+}
+
+.drawer-action {
+  padding: 0 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.drawer-action strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-search {
+  margin: 0 10px;
+  padding: 0 10px;
+}
+
+.drawer-search input {
+  height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.drawer-search input:focus-visible {
+  outline: 0;
+}
+
+.drawer-list {
+  display: grid;
+  gap: 6px;
+  padding: 22px 10px;
+}
+
+.drawer-list h2 {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.chat-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #f2f2f2;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-row span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-row time {
+  color: var(--muted);
+}
+
+.chat-row:hover {
+  background: var(--surface-raised);
+}

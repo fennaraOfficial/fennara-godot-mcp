@@ -1,0 +1,67 @@
+.toolbar,
+.composer-actions,
+.settings-panel menu {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.toolbar {
+  justify-content: flex-end;
+}
+
+.icon-button,
+.secondary-button,
+.primary-button {
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+}
+
+.drawer-toggle {
+  justify-self: start;
+  border-radius: 6px;
+}
+
+.secondary-button,
+.primary-button {
+  min-width: 0;
+  padding: 0 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.primary-button {
+  border-color: #eeeeee;
+  background: #eeeeee;
+  color: #181818;
+  font-weight: 650;
+}
+
+button:hover {
+  border-color: #cfcfcf;
+  background: #383838;
+}
+
+.primary-button:hover {
+  background: #ffffff;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #e6e6e6;
+  outline-offset: 1px;
+}

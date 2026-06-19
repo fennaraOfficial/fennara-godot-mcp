@@ -13,6 +13,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | `local/` | Rust CLI, MCP server, daemon, schemas, and local runtime code. |
 | `media/` | Images and public media used by docs. |
 | `scripts/` | Versioning, packaging, and release helper scripts. |
+| `ui/chat/` | Source for the optional in-editor web chat UI. |
 | `local/templates/` | Markdown templates written into Godot projects by `fennara install` and refreshed by `fennara update`. |
 | `install.ps1` / `install.sh` | Bootstrap scripts that install the Fennara CLI from GitHub releases. |
 | `VERSION` | Version source of truth. |
@@ -51,6 +52,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | `godot/addons/fennara/fennara.gdextension` | Godot GDExtension registration file. |
 | `godot/addons/fennara/VERSION` | Addon package version. |
 | `godot/addons/fennara/bin/` | Built platform libraries. |
+| `godot/addons/fennara/dist/` | Packaged web UI assets used by the in-editor chat webview. |
 | `godot/addons/fennara/runtime/` | Runtime helper scripts packaged with the addon. |
 
 ## Scripts And Workflows
@@ -59,6 +61,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | --- | --- |
 | `scripts/set-version.mjs` | Updates versioned files across the repo. |
 | `scripts/check-version.mjs` | Checks version sync. |
+| `scripts/sync-chat-ui.mjs` | Copies the buildless chat UI source into the addon payload. |
 | `scripts/package-preview.mjs` | Assembles addon, CLI, and local runtime release zips. |
 | `.github/workflows/version-check.yml` | Version consistency check. |
 | `.github/workflows/gdextension-build.yml` | GDExtension build check. |
@@ -76,6 +79,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | Change generated project guidance | `local/templates/` and `local/crates/fennara-cli/src/project_guidance.rs` |
 | Change MCP app setup | `local/crates/fennara-cli/src/mcp_setup.rs` |
 | Change runtime session behavior | `fennara-cpp/src/tools/runtime_session/` and `local/crates/fennara-daemon/` |
+| Change in-editor chat UI | `ui/chat/`, `godot/addons/fennara/dist/`, and `fennara-cpp/src/ui/dock.cpp` |
 | Change C# support | `fennara-cpp/src/lsp/` and `local/crates/fennara-cli/src/csharp_support.rs` |
 | Change release packages | `scripts/package-preview.mjs` and `.github/workflows/release.yml` |
 | Bump version | `node scripts/set-version.mjs <version>` |

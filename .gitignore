@@ -11,6 +11,8 @@ fennara-cpp/build/
 local/target/
 
 dist/
+!godot/addons/fennara/dist/
+!godot/addons/fennara/dist/**
 .package-preview/
 
 godot/addons/fennara/bin/*

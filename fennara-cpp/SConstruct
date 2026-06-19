@@ -8,7 +8,8 @@ CacheDir(os.environ.get("SCONS_CACHE", ".scons_cache/"))
 env = SConscript("godot-cpp/SConstruct")
 
 if env["platform"] == "windows":
-    env.Append(LIBS=["comdlg32"])
+    env.Append(CPPPATH=["vendor/webview/include", "vendor/webview2/include"])
+    env.Append(LIBS=["advapi32", "comdlg32", "ole32", "shell32", "shlwapi", "user32", "version"])
 
 # Auto-discover include directories
 for root, dirs, files in os.walk("include"):
