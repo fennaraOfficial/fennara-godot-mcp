@@ -86,14 +86,13 @@ The workflow publishes:
 
 ## Release Assets
 
-Each release should contain three package types per platform.
+Each release should contain per-platform CLI/local runtime packages and one shared all-platform addon package.
 
 Windows:
 
 ```text
 fennara-cli-windows-x86_64-v<version>.zip
 fennara-local-windows-x86_64-v<version>.zip
-fennara-addon-windows-x86_64-v<version>.zip
 ```
 
 Linux:
@@ -101,7 +100,6 @@ Linux:
 ```text
 fennara-cli-linux-x86_64-v<version>.zip
 fennara-local-linux-x86_64-v<version>.zip
-fennara-addon-linux-x86_64-v<version>.zip
 ```
 
 macOS:
@@ -109,18 +107,24 @@ macOS:
 ```text
 fennara-cli-macos-arm64-v<version>.zip
 fennara-local-macos-arm64-v<version>.zip
-fennara-addon-macos-arm64-v<version>.zip
+```
+
+Shared addon:
+
+```text
+fennara-addon-v<version>.zip
 ```
 
 Package roles:
 
-- `fennara-cli-*`: install script payload; contains only the `fennara` CLI.
-- `fennara-local-*`: local MCP and daemon launchers plus versioned runtime binaries.
-- `fennara-addon-*`: Godot addon payload copied into projects.
+- `fennara-cli-*`: install script payload; contains only the `fennara` CLI for one platform.
+- `fennara-local-*`: local MCP and daemon launchers plus versioned runtime binaries for one platform.
+- `fennara-addon-v*`: all-platform Godot addon payload copied into projects and used by the Godot Asset Library.
+
+The shared addon zip contains every built GDExtension binary referenced by `godot/addons/fennara/fennara.gdextension`. Godot loads the matching library for the user's OS and ignores the others.
 
 The CLI embeds the generated project guidance templates from `local/templates/`.
 When release packaging builds the CLI, those templates are compiled into the binary with the rest of the CLI code.
-
 ## What `latest` Means
 
 `latest` is the moving release used by normal install and update flows.

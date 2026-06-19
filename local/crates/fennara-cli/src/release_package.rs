@@ -19,7 +19,7 @@ pub fn ensure_package(version_request: &str) -> Result<InstalledPackage, String>
 
     let release = fetch_release(version_request)?;
     let local_prefix = format!("fennara-local-{}-{}-v", platform_name(), arch_name());
-    let addon_prefix = format!("fennara-addon-{}-{}-v", platform_name(), arch_name());
+    let addon_prefix = "fennara-addon-v".to_string();
     let local_asset = release
         .asset(&local_prefix)
         .ok_or_else(|| format!("release {} is missing {local_prefix}*.zip", release.tag))?;

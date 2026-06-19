@@ -14,19 +14,19 @@ const stageRoot = path.join(root, ".package-preview");
 rmSync(stageRoot, { recursive: true, force: true });
 mkdirSync(distDir, { recursive: true });
 
-const addonArchive = packageAddon();
+const addonPart = packageAddonPart();
 const cliArchive = packageCli();
 const localArchive = packageLocal();
 
-console.log(`Created ${path.relative(root, addonArchive)}`);
+console.log(`Created ${path.relative(root, addonPart)}`);
 console.log(`Created ${path.relative(root, cliArchive)}`);
 console.log(`Created ${path.relative(root, localArchive)}`);
 
-function packageAddon() {
-  const stage = path.join(stageRoot, "addon");
+function packageAddonPart() {
   const source = path.join(root, "godot", "addons", "fennara");
-  const target = path.join(stage, "addons", "fennara");
+  const target = path.join(distDir, `addon-part-${platform}-${arch}`, "addons", "fennara");
 
+  rmSync(path.dirname(path.dirname(target)), { recursive: true, force: true });
   mkdirSync(path.join(target, "bin"), { recursive: true });
   copyDir(source, target, (sourcePath) => {
     const relative = path.relative(source, sourcePath).replaceAll(path.sep, "/");
@@ -36,9 +36,7 @@ function packageAddon() {
     return true;
   });
 
-  const archive = path.join(distDir, `fennara-addon-${platform}-${arch}-v${version}.zip`);
-  zipDirectory(stage, archive);
-  return archive;
+  return path.dirname(path.dirname(target));
 }
 
 function packageCli() {

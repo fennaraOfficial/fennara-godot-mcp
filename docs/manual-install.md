@@ -16,14 +16,13 @@ Open the latest GitHub release:
 
 https://github.com/fennaraOfficial/fennara-godot-mcp/releases/latest
 
-Download the files for your platform.
+Download the CLI and local runtime files for your platform, plus the shared addon zip.
 
 Windows:
 
 ```text
 fennara-cli-windows-x86_64-v<version>.zip
 fennara-local-windows-x86_64-v<version>.zip
-fennara-addon-windows-x86_64-v<version>.zip
 ```
 
 Linux:
@@ -31,7 +30,6 @@ Linux:
 ```text
 fennara-cli-linux-x86_64-v<version>.zip
 fennara-local-linux-x86_64-v<version>.zip
-fennara-addon-linux-x86_64-v<version>.zip
 ```
 
 macOS:
@@ -39,7 +37,12 @@ macOS:
 ```text
 fennara-cli-macos-arm64-v<version>.zip
 fennara-local-macos-arm64-v<version>.zip
-fennara-addon-macos-arm64-v<version>.zip
+```
+
+Shared addon:
+
+```text
+fennara-addon-v<version>.zip
 ```
 
 ## 2. Install The CLI
