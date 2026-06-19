@@ -203,7 +203,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fennara-release-addon
-          path: dist/fennara-addon-v*.zip
+          path: dist/fennara-addon-*.zip
           if-no-files-found: error
   publish:
     name: publish GitHub release
