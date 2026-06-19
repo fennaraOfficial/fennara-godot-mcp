@@ -45,6 +45,12 @@ Shared addon:
 fennara-addon-v<version>.zip
 ```
 
+For Godot Asset Library links, use the stable latest asset:
+
+```text
+fennara-addon-latest.zip
+```
+
 ## 2. Install The CLI
 
 Extract the `fennara-cli` zip.

@@ -155,7 +155,7 @@ Each public release publishes separate assets so installs can stay modular:
 | --- | --- |
 | `fennara-cli-<platform>-<arch>.zip` | CLI and stable launchers. |
 | `fennara-local-<platform>-<arch>.zip` | Versioned MCP and daemon runtimes. |
-| `fennara-addon-v<version>.zip` | All-platform Godot addon payload with every built GDExtension binary referenced by `fennara.gdextension`. |
+| `fennara-addon-v<version>.zip` / `fennara-addon-latest.zip` | All-platform Godot addon payload with every built GDExtension binary referenced by `fennara.gdextension`. |
 
 The moving `latest` release is what normal users should install from. Versioned
 releases such as `v0.2.8` stay available for pinning and debugging.

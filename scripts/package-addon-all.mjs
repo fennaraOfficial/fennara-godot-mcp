@@ -10,6 +10,7 @@ const partsDir = path.resolve(root, args["parts-dir"] ?? "dist");
 const distDir = path.join(root, "dist");
 const stageDir = path.join(root, ".package-preview", "addon-all");
 const archive = path.join(distDir, `fennara-addon-v${version}.zip`);
+const latestArchive = path.join(distDir, "fennara-addon-latest.zip");
 
 rmSync(stageDir, { recursive: true, force: true });
 mkdirSync(stageDir, { recursive: true });
@@ -24,7 +25,9 @@ for (const partRoot of partRoots) {
 }
 
 zipDirectory(stageDir, archive);
+copyFileSync(archive, latestArchive);
 console.log(`Created ${path.relative(root, archive)}`);
+console.log(`Created ${path.relative(root, latestArchive)}`);
 
 function findAddonParts(source) {
   const results = [];

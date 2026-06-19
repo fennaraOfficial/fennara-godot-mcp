@@ -113,13 +113,15 @@ Shared addon:
 
 ```text
 fennara-addon-v<version>.zip
+fennara-addon-latest.zip
 ```
 
 Package roles:
 
 - `fennara-cli-*`: install script payload; contains only the `fennara` CLI for one platform.
 - `fennara-local-*`: local MCP and daemon launchers plus versioned runtime binaries for one platform.
-- `fennara-addon-v*`: all-platform Godot addon payload copied into projects and used by the Godot Asset Library.
+- `fennara-addon-v*`: versioned all-platform Godot addon payload copied into projects by the CLI.
+- `fennara-addon-latest.zip`: stable all-platform addon URL for the Godot Asset Library and docs links.
 
 The shared addon zip contains every built GDExtension binary referenced by `godot/addons/fennara/fennara.gdextension`. Godot loads the matching library for the user's OS and ignores the others.
 
