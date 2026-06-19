@@ -133,3 +133,46 @@ jobs:
           name: fennara-package-preview-${{ matrix.platform }}-${{ matrix.arch }}
           path: dist/*.zip
           if-no-files-found: error
+
+      - name: Upload addon part
+        uses: actions/upload-artifact@v4
+        with:
+          name: fennara-addon-part-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/addon-part-${{ matrix.platform }}-${{ matrix.arch }}/
+          if-no-files-found: error
+
+  addon:
+    name: package all-platform addon
+    runs-on: ubuntu-latest
+    needs: package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download addon parts
+        uses: actions/download-artifact@v4
+        with:
+          path: addon-parts
+          pattern: fennara-addon-part-*
+          merge-multiple: true
+
+      - name: Assemble all-platform addon archive
+        run: node scripts/package-addon-all.mjs --parts-dir addon-parts
+
+      - name: Upload all-platform addon archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: fennara-package-preview-addon
+          path: dist/fennara-addon-v*.zip
+          if-no-files-found: error

@@ -4,7 +4,7 @@ This guide walks through a normal Fennara setup from a clean machine to a connec
 
 ## Requirements
 
-- Godot 4 project
+- Godot 4.5+ project
 - An MCP client that can run local stdio MCP servers
 - Windows, macOS, or Linux
 - For C# projects: .NET SDK installed and available as `dotnet`

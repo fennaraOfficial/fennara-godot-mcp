@@ -55,11 +55,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
         platform_name(),
         arch_name()
     );
-    println!(
-        "addon asset hint: fennara-addon-{}-{}-v{VERSION}.zip",
-        platform_name(),
-        arch_name()
-    );
+    println!("addon asset hint: fennara-addon-v{VERSION}.zip");
 
     if repair {
         println!("repair: base directories ensured");
