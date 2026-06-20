@@ -33,13 +33,17 @@ pub(crate) async fn call_tool(
     State(state): State<AppState>,
     Json(request): Json<ToolCallRequest>,
 ) -> Json<Value> {
+    Json(call_tool_value(&state, &request.tool, request.args).await)
+}
+
+pub(crate) async fn call_tool_value(state: &AppState, tool: &str, args: Value) -> Value {
     let request_id = format!(
         "local-tool-{}",
         state.request_counter.fetch_add(1, Ordering::Relaxed) + 1
     );
-    let (session_id, sender) = match select_target_session(&state).await {
+    let (session_id, sender) = match select_target_session(state).await {
         Ok(target) => target,
-        Err(error) => return Json(json!({ "ok": false, "error": error })),
+        Err(error) => return json!({ "ok": false, "error": error }),
     };
 
     let (response_tx, response_rx) = oneshot::channel();
@@ -55,8 +59,8 @@ pub(crate) async fn call_tool(
         "type": "tool_call",
         "request_id": request_id,
         "session_id": session_id,
-        "tool": request.tool,
-        "args": request.args
+        "tool": tool,
+        "args": args
     });
 
     if sender
@@ -64,24 +68,112 @@ pub(crate) async fn call_tool(
         .is_err()
     {
         state.pending_tool_calls.write().await.remove(&request_id);
-        return Json(json!({
+        return json!({
             "ok": false,
             "error": "Failed to send tool call to the Godot plugin."
-        }));
+        });
     }
 
     match tokio::time::timeout(Duration::from_secs(295), response_rx).await {
-        Ok(Ok(response)) => Json(response),
-        Ok(Err(_)) => Json(json!({
+        Ok(Ok(response)) => response,
+        Ok(Err(_)) => json!({
             "ok": false,
             "error": "Godot plugin disconnected before returning a tool result."
-        })),
+        }),
         Err(_) => {
             state.pending_tool_calls.write().await.remove(&request_id);
-            Json(json!({
+            json!({
                 "ok": false,
                 "error": "Timed out waiting for the Godot plugin tool result."
-            }))
+            })
+        }
+    }
+}
+
+pub(crate) async fn begin_snapshot_turn(
+    state: &AppState,
+    chat_id: &str,
+    user_message: &str,
+) -> Value {
+    call_plugin_request(
+        state,
+        json!({
+            "type": "snapshot_begin_turn",
+            "chat_id": chat_id,
+            "user_message": user_message
+        }),
+        Duration::from_secs(10),
+    )
+    .await
+}
+
+pub(crate) async fn revert_snapshot_turn(state: &AppState, chat_id: &str) -> Value {
+    call_plugin_request(
+        state,
+        json!({
+            "type": "snapshot_revert",
+            "chat_id": chat_id
+        }),
+        Duration::from_secs(30),
+    )
+    .await
+}
+
+async fn call_plugin_request(state: &AppState, mut payload: Value, timeout: Duration) -> Value {
+    let request_id = format!(
+        "local-plugin-{}",
+        state.request_counter.fetch_add(1, Ordering::Relaxed) + 1
+    );
+    let (session_id, sender) = match select_target_session(state).await {
+        Ok(target) => target,
+        Err(error) => return json!({ "ok": false, "error": error }),
+    };
+
+    let (response_tx, response_rx) = oneshot::channel();
+    state.pending_tool_calls.write().await.insert(
+        request_id.clone(),
+        PendingToolCall {
+            session_id: session_id.clone(),
+            sender: response_tx,
+        },
+    );
+
+    payload["request_id"] = json!(request_id);
+    payload["session_id"] = json!(session_id);
+
+    if sender
+        .send(Message::Text(payload.to_string().into()))
+        .is_err()
+    {
+        state.pending_tool_calls.write().await.remove(
+            payload
+                .get("request_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
+        return json!({
+            "ok": false,
+            "error": "Failed to send request to the Godot plugin."
+        });
+    }
+
+    match tokio::time::timeout(timeout, response_rx).await {
+        Ok(Ok(response)) => response,
+        Ok(Err(_)) => json!({
+            "ok": false,
+            "error": "Godot plugin disconnected before returning a response."
+        }),
+        Err(_) => {
+            state.pending_tool_calls.write().await.remove(
+                payload
+                    .get("request_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            );
+            json!({
+                "ok": false,
+                "error": "Timed out waiting for the Godot plugin response."
+            })
         }
     }
 }
@@ -121,6 +213,7 @@ async fn handle_godot_socket(socket: WebSocket, state: AppState) {
                             project_path: optional_string(&value, "project_path"),
                             godot_version: optional_string(&value, "godot_version"),
                             plugin_version: optional_string(&value, "plugin_version"),
+                            chat_token: optional_string(&value, "chat_token"),
                             tools: string_array(&value, "tools"),
                         };
 
@@ -137,7 +230,10 @@ async fn handle_godot_socket(socket: WebSocket, state: AppState) {
                             .insert(next_session_id.clone(), project);
                         ensure_active_project_after_connect(&state, &next_session_id).await;
                         broadcast_active_project_changed(&state).await;
-                    } else if value.get("type").and_then(Value::as_str) == Some("tool_result") {
+                    } else if matches!(
+                        value.get("type").and_then(Value::as_str),
+                        Some("tool_result" | "snapshot_result")
+                    ) {
                         if let Some(request_id) = value.get("request_id").and_then(Value::as_str) {
                             if let Some(pending) =
                                 state.pending_tool_calls.write().await.remove(request_id)

@@ -2,7 +2,7 @@ use axum::extract::ws::Message;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
         Arc,
@@ -20,6 +20,8 @@ pub(crate) struct AppState {
     pub(crate) active_project_explicit: Arc<RwLock<bool>>,
     pub(crate) godot_senders: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
     pub(crate) pending_tool_calls: Arc<RwLock<HashMap<String, PendingToolCall>>>,
+    pub(crate) cancelled_chats: Arc<RwLock<HashSet<String>>>,
+    pub(crate) revertable_chats: Arc<RwLock<HashSet<String>>>,
     pub(crate) runtime_sessions: Arc<Mutex<HashMap<String, RuntimeSession>>>,
     pub(crate) shutdown_sender: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pub(crate) docs_warmup_running: Arc<AtomicBool>,
@@ -35,6 +37,8 @@ impl AppState {
             active_project_explicit: Arc::new(RwLock::new(false)),
             godot_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_tool_calls: Arc::new(RwLock::new(HashMap::new())),
+            cancelled_chats: Arc::new(RwLock::new(HashSet::new())),
+            revertable_chats: Arc::new(RwLock::new(HashSet::new())),
             runtime_sessions: Arc::new(Mutex::new(HashMap::new())),
             shutdown_sender: Arc::new(Mutex::new(Some(shutdown_tx))),
             docs_warmup_running: Arc::new(AtomicBool::new(false)),
@@ -60,6 +64,8 @@ pub(crate) struct GodotProjectStatus {
     pub(crate) project_path: Option<String>,
     pub(crate) godot_version: Option<String>,
     pub(crate) plugin_version: Option<String>,
+    #[serde(skip_serializing)]
+    pub(crate) chat_token: Option<String>,
     pub(crate) tools: Vec<String>,
 }
 

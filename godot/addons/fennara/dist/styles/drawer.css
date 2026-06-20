@@ -22,8 +22,7 @@
   padding: 10px;
 }
 
-.drawer-action,
-.drawer-search {
+.drawer-action {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
@@ -35,7 +34,6 @@
   color: #f2f2f2;
 }
 
-.drawer-action {
   padding: 0 10px;
   cursor: pointer;
   text-align: left;
@@ -48,26 +46,10 @@
   white-space: nowrap;
 }
 
-.drawer-search {
-  margin: 0 10px;
-  padding: 0 10px;
-}
-
-.drawer-search input {
-  height: 38px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.drawer-search input:focus-visible {
-  outline: 0;
-}
-
 .drawer-list {
   display: grid;
   gap: 6px;
-  padding: 22px 10px;
+  padding: 8px 10px 22px;
 }
 
 .drawer-list h2 {

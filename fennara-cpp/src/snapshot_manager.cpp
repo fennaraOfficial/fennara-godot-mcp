@@ -29,11 +29,12 @@ void _record_snapshot_incident(const godot::String &code,
 } // namespace
 
 void FennaraSnapshotManager::_bind_methods() {
-    godot::ClassDB::bind_method(godot::D_METHOD("begin_turn", "user_message"), &FennaraSnapshotManager::begin_turn);
+    godot::ClassDB::bind_method(godot::D_METHOD("begin_turn", "user_message", "chat_id"), &FennaraSnapshotManager::begin_turn);
     godot::ClassDB::bind_method(godot::D_METHOD("snapshot_file", "path"), &FennaraSnapshotManager::snapshot_file);
     godot::ClassDB::bind_method(godot::D_METHOD("snapshot_created", "path"), &FennaraSnapshotManager::snapshot_created);
     godot::ClassDB::bind_method(godot::D_METHOD("snapshot_deleted", "path"), &FennaraSnapshotManager::snapshot_deleted);
-    godot::ClassDB::bind_method(godot::D_METHOD("revert"), &FennaraSnapshotManager::revert);
+    godot::ClassDB::bind_method(godot::D_METHOD("revert", "chat_id"), &FennaraSnapshotManager::revert);
+    godot::ClassDB::bind_method(godot::D_METHOD("can_revert_chat", "chat_id"), &FennaraSnapshotManager::can_revert_chat);
     godot::ClassDB::bind_method(godot::D_METHOD("revert_count"), &FennaraSnapshotManager::revert_count);
     godot::ClassDB::bind_method(godot::D_METHOD("clear"), &FennaraSnapshotManager::clear);
 }
@@ -51,11 +52,13 @@ bool FennaraSnapshotManager::_is_path_in_current_turn(const godot::String &path)
 
 // ── Turn lifecycle ───────────────────────────────────────────────────────
 
-void FennaraSnapshotManager::begin_turn(const godot::String &user_message) {
+void FennaraSnapshotManager::begin_turn(const godot::String &user_message,
+                                        const godot::String &chat_id) {
     if ((int)_stack.size() >= MAX_TURNS) {
         _stack.erase(_stack.begin());
     }
     TurnSnapshot turn;
+    turn.chat_id = chat_id;
     turn.user_message = user_message;
     _stack.push_back(turn);
     FLOG_UI(godot::String("Snapshot: begin_turn, stack_size=") + godot::String::num_int64(_stack.size()));
@@ -133,8 +136,13 @@ void FennaraSnapshotManager::snapshot_deleted(const godot::String &path) {
 
 // ── Revert ───────────────────────────────────────────────────────────────
 
-godot::String FennaraSnapshotManager::revert() {
+bool FennaraSnapshotManager::can_revert_chat(const godot::String &chat_id) const {
+    return !_stack.empty() && _stack.back().chat_id == chat_id;
+}
+
+godot::String FennaraSnapshotManager::revert(const godot::String &chat_id) {
     if (_stack.empty()) return "";
+    if (_stack.back().chat_id != chat_id) return "";
 
     TurnSnapshot turn = _stack.back();
     _stack.pop_back();

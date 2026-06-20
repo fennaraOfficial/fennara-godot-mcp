@@ -127,18 +127,23 @@ void WebviewHost::resize_to(godot::Control *owner) {
     }
 
 #ifdef _WIN32
-    godot::Vector2 local_position = owner->get_global_position();
-    godot::Vector2 size = owner->get_size();
-    int x = static_cast<int>(local_position.x);
-    int y = static_cast<int>(local_position.y);
-    int width = static_cast<int>(size.x);
-    int height = static_cast<int>(size.y);
-    if (width <= 0 || height <= 0) {
+    if (widget == nullptr) {
+        output_error("Web chat resize skipped: native widget handle is null");
         return;
     }
 
-    if (widget == nullptr) {
-        output_error("Web chat resize skipped: native widget handle is null");
+    HWND hwnd = reinterpret_cast<HWND>(widget);
+    if (!owner->is_visible_in_tree()) {
+        ShowWindow(hwnd, SW_HIDE);
+        return;
+    }
+
+    godot::Vector2 screen_position = owner->get_screen_position();
+    godot::Vector2 size = owner->get_size();
+    int width = static_cast<int>(size.x);
+    int height = static_cast<int>(size.y);
+    if (width <= 0 || height <= 0) {
+        ShowWindow(hwnd, SW_HIDE);
         return;
     }
 
@@ -152,7 +157,17 @@ void WebviewHost::resize_to(godot::Control *owner) {
         return;
     }
 
-    HWND hwnd = reinterpret_cast<HWND>(widget);
+    HWND parent_hwnd = reinterpret_cast<HWND>(parent_window);
+    POINT origin{
+        static_cast<LONG>(screen_position.x),
+        static_cast<LONG>(screen_position.y),
+    };
+    if (parent_hwnd != nullptr) {
+        ScreenToClient(parent_hwnd, &origin);
+    }
+    int x = static_cast<int>(origin.x);
+    int y = static_cast<int>(origin.y);
+
     MoveWindow(hwnd, x, y, width, height, TRUE);
     ShowWindow(hwnd, SW_SHOW);
 

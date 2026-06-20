@@ -3,6 +3,7 @@
 #include "fennara/addon_access.hpp"
 #include "fennara/executor.hpp"
 #include "fennara/logger.hpp"
+#include "fennara/snapshot_manager.hpp"
 #include "fennara/tool_call_log.hpp"
 #include "fennara/tool_results/formatters.hpp"
 #include "fennara/update_notice.hpp"
@@ -15,6 +16,8 @@ namespace {
 
 bool _is_local_bridge_tool(const godot::String &tool) {
     return tool == "fennara_status" ||
+           tool == "read_file" ||
+           tool == "file_ops" ||
            tool == "write_or_update_file" ||
            tool == "run_scene_edit_script" ||
            tool == "get_scene_tree" ||
@@ -39,6 +42,12 @@ godot::String _friendly_mcp_tool_action(const godot::String &tool,
             return (mode == "write" ? "Writing script: " : "Editing script: ") + path;
         }
         return (mode == "write" ? "Writing file: " : "Editing file: ") + path;
+    }
+    if (tool == "read_file") {
+        return "Reading project file";
+    }
+    if (tool == "file_ops") {
+        return "Exploring project files";
     }
     if (tool == "run_scene_edit_script") {
         godot::String scene_path = args.get("scene_path", "");
@@ -114,6 +123,8 @@ godot::Dictionary _fennara_status_result() {
     result["version"] = update_notice::status();
     result["addon_access"] = addon_access::status();
     godot::Array local_tools;
+    local_tools.append("read_file");
+    local_tools.append("file_ops");
     local_tools.append("write_or_update_file");
     local_tools.append("run_scene_edit_script");
     local_tools.append("get_scene_tree");
@@ -182,6 +193,10 @@ void FennaraLocalBridge::_handle_message(const godot::Dictionary &message) {
     godot::String type = message.get("type", "");
     if (type == "tool_call") {
         _handle_tool_call(message);
+    } else if (type == "snapshot_begin_turn") {
+        _handle_snapshot_begin_turn(message);
+    } else if (type == "snapshot_revert") {
+        _handle_snapshot_revert(message);
     } else if (type == "active_project_changed") {
         bool active = message.get("is_active", false);
         _active_mcp_target_name = godot::String(message.get("active_project_name", "")).strip_edges();
@@ -264,6 +279,9 @@ void FennaraLocalBridge::_handle_tool_call(const godot::Dictionary &message) {
         }
         executor->set_name("FennaraLocalBridgeExecutor");
         executor->set_execution_context("mcp:" + request_id, -1);
+        if (_snapshot_mgr.is_valid()) {
+            executor->set_snapshot_manager(_snapshot_mgr.ptr());
+        }
         add_child(executor);
 
         godot::Array tool_calls;
@@ -290,17 +308,71 @@ void FennaraLocalBridge::_handle_tool_call(const godot::Dictionary &message) {
     }
 
     _log_mcp_tool_start(tool, args);
+    FennaraSnapshotManager::set_active(_snapshot_mgr.is_valid() ? _snapshot_mgr.ptr() : nullptr);
     godot::Dictionary raw_result = FennaraExecutor::execute_tool(tool, args);
+    FennaraSnapshotManager::set_active(nullptr);
     _log_mcp_tool_complete();
     godot::Dictionary result = tool_results::format_for_model(tool, args, raw_result);
     response["ok"] = result.get("success", false);
     response["result"] = _mcp_model_facing_result(result);
+    response["raw_result"] = raw_result;
+    response["formatted_result"] = result;
     tool_call_log::log_completed(_session_id, request_id, tool, args,
                                  godot::Dictionary(response["result"]),
                                  response["ok"], started_at_ms);
     godot::Dictionary done_details = start_details;
     done_details["ok"] = response["ok"];
     FLOG_CTX("TOOL", "Local bridge sync tool completed", done_details);
+    _send_json(response);
+}
+
+void FennaraLocalBridge::_handle_snapshot_begin_turn(const godot::Dictionary &message) {
+    godot::Dictionary response;
+    response["type"] = "snapshot_result";
+    response["request_id"] = message.get("request_id", "");
+    if (!_snapshot_mgr.is_valid()) {
+        _snapshot_mgr.instantiate();
+    }
+    if (!_snapshot_mgr.is_valid()) {
+        response["ok"] = false;
+        response["error"] = "Snapshot manager is unavailable.";
+        _send_json(response);
+        return;
+    }
+    _snapshot_mgr->begin_turn(message.get("user_message", ""),
+                              message.get("chat_id", ""));
+    response["ok"] = true;
+    response["action"] = "begin_turn";
+    response["revert_count"] = _snapshot_mgr->revert_count();
+    _send_json(response);
+}
+
+void FennaraLocalBridge::_handle_snapshot_revert(const godot::Dictionary &message) {
+    godot::Dictionary response;
+    response["type"] = "snapshot_result";
+    response["request_id"] = message.get("request_id", "");
+    godot::String chat_id = message.get("chat_id", "");
+    if (!_snapshot_mgr.is_valid() || _snapshot_mgr->revert_count() <= 0) {
+        response["ok"] = true;
+        response["action"] = "revert";
+        response["restored_message"] = "";
+        response["revert_count"] = 0;
+        _send_json(response);
+        return;
+    }
+    if (!_snapshot_mgr->can_revert_chat(chat_id)) {
+        response["ok"] = false;
+        response["error"] = "Latest revert snapshot belongs to a different chat.";
+        response["action"] = "revert";
+        response["revert_count"] = _snapshot_mgr->revert_count();
+        _send_json(response);
+        return;
+    }
+    godot::String restored_message = _snapshot_mgr->revert(chat_id);
+    response["ok"] = true;
+    response["action"] = "revert";
+    response["restored_message"] = restored_message;
+    response["revert_count"] = _snapshot_mgr->revert_count();
     _send_json(response);
 }
 
@@ -339,11 +411,17 @@ void FennaraLocalBridge::_on_async_tool_call_completed(const godot::Array &resul
 
     godot::Dictionary wrapped = first;
     godot::Dictionary result = wrapped.get("result", godot::Dictionary());
+    godot::Dictionary raw_result = wrapped.get("raw_result", godot::Dictionary());
     if (tool_name == "screenshot_scene") {
         result = _prepare_mcp_screenshot_result(result);
     }
     response["ok"] = result.get("success", false);
     response["result"] = _mcp_model_facing_result(result);
+    response["raw_result"] = raw_result;
+    response["formatted_result"] = result;
+    if (wrapped.has("plugin_metadata")) {
+        response["plugin_metadata"] = wrapped["plugin_metadata"];
+    }
     tool_call_log::log_completed(_session_id, request_id, tool_name, input,
                                  godot::Dictionary(response["result"]),
                                  response["ok"], started_at_ms);

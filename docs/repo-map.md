@@ -80,6 +80,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | Change MCP app setup | `local/crates/fennara-cli/src/mcp_setup.rs` |
 | Change runtime session behavior | `fennara-cpp/src/tools/runtime_session/` and `local/crates/fennara-daemon/` |
 | Change in-editor chat UI | `ui/chat/`, `godot/addons/fennara/dist/`, and `fennara-cpp/src/ui/dock.cpp` |
+| Change vendored chat UI libraries | `ui/chat/vendor/`, `godot/addons/fennara/dist/vendor/`, and `THIRD_PARTY_NOTICES.md` |
 | Change C# support | `fennara-cpp/src/lsp/` and `local/crates/fennara-cli/src/csharp_support.rs` |
 | Change release packages | `scripts/package-preview.mjs` and `.github/workflows/release.yml` |
 | Bump version | `node scripts/set-version.mjs <version>` |

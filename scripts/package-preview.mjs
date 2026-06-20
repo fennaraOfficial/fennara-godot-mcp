@@ -14,6 +14,8 @@ const stageRoot = path.join(root, ".package-preview");
 rmSync(stageRoot, { recursive: true, force: true });
 mkdirSync(distDir, { recursive: true });
 
+syncChatUi();
+
 const addonPart = packageAddonPart();
 const cliArchive = packageCli();
 const localArchive = packageLocal();
@@ -37,6 +39,19 @@ function packageAddonPart() {
   });
 
   return path.dirname(path.dirname(target));
+}
+
+function syncChatUi() {
+  const source = path.join(root, "ui", "chat");
+  const target = path.join(root, "godot", "addons", "fennara", "dist");
+
+  rmSync(target, { recursive: true, force: true });
+  copyDir(source, target, (sourcePath) => {
+    const relative = path.relative(source, sourcePath).replaceAll(path.sep, "/");
+    return relative !== "README.md";
+  });
+
+  console.log(`Synced ${path.relative(root, source)} -> ${path.relative(root, target)}`);
 }
 
 function packageCli() {

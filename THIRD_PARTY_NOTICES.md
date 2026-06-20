@@ -2,6 +2,30 @@
 
 This repository may include bundled third-party binaries or assets used by Fennara.
 
+## markdown-it
+
+The in-editor chat UI vendors `markdown-it` for local Markdown rendering.
+
+Project: https://github.com/markdown-it/markdown-it
+
+markdown-it is distributed under the MIT license. See the upstream project for full license text.
+
+## markdown-it-task-lists
+
+The in-editor chat UI vendors `markdown-it-task-lists` for GitHub-style task list rendering.
+
+Project: https://github.com/revin/markdown-it-task-lists
+
+markdown-it-task-lists is distributed under the ISC license. See the upstream project for full license text.
+
+## DOMPurify
+
+The in-editor chat UI vendors DOMPurify to sanitize rendered Markdown HTML before insertion into the webview.
+
+Project: https://github.com/cure53/DOMPurify
+
+DOMPurify is distributed under the Mozilla Public License 2.0 or Apache License 2.0. See the upstream project for full license text.
+
 ## ripgrep
 
 The Windows preview addon payload includes `rg.exe`, the ripgrep command-line search tool.

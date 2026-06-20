@@ -1,6 +1,6 @@
 {
     "name": "script_diagnostics",
-    "description": "Fetch script and shader errors, warnings, info, and hints from the active Godot diagnostics sources. Targeted file_paths support .gd, .cs, and .gdshader files. scan_project: true scans all project .gd, .cs, and .gdshader files under res://. For requested .gd and .cs files, this also loads and instantiates project .tscn scenes in memory with Godot logging captured, then attaches script-related scene-load errors back to the script file with source='scene_load' and scene_path. Use this after editing scripts or shaders outside a tool path that already ran diagnostics, or when diagnosing script/shader errors that only appear when scenes are opened. Targeted calls support at most 5 files; use scan_project for broad checks.",
+    "description": "Fetch script and shader errors, warnings, info, and hints from the active Godot diagnostics sources. Targeted file_paths support .gd, .cs, and .gdshader files. scan_project: true scans all project .gd, .cs, and .gdshader files under res://. For requested .gd and .cs files, this also loads and instantiates project .tscn scenes in memory with Godot logging captured, then attaches script-related scene-load errors back to the script file with source='scene_load' and scene_path. This scene-load pass is diagnostic only: it does not open the editor UI, run gameplay, or validate arbitrary scene/resource state. Use this after editing scripts or shaders outside a tool path that already ran diagnostics, or when diagnosing parser/type/reference/shader errors that only appear when scenes are opened. Do not use script_diagnostics to debug general scene/resource configuration; use scene/resource tools for that. Targeted calls support at most 5 files; use scan_project for broad script/shader health checks.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -16,7 +16,7 @@
             },
             "scan_project": {
                 "type": "boolean",
-                "description": "When true, scan every .gd, .cs, and .gdshader file in the current Godot project under res:// in one call. This is intended for broad script and shader health checks after larger refactors. Required unless file_paths is provided."
+                "description": "When true, scan every .gd, .cs, and .gdshader file in the current Godot project under res:// in one call. This is intended for broad script and shader health checks after larger refactors or when the user asks for project-wide script/shader health. Required unless file_paths is provided."
             }
         },
         "additionalProperties": false

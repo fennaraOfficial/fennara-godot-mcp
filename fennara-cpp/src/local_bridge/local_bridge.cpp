@@ -2,6 +2,7 @@
 
 #include "fennara/app_paths.hpp"
 #include "fennara/logger.hpp"
+#include "fennara/snapshot_manager.hpp"
 
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/os.hpp>
@@ -23,7 +24,10 @@ void FennaraLocalBridge::_bind_methods() {
 
 void FennaraLocalBridge::_ready() {
     _session_id = _make_session_id();
+    _chat_token = _make_chat_token();
+    _snapshot_mgr.instantiate();
     set_process(true);
+    _start_daemon_if_available();
     _connect_socket();
 }
 
@@ -122,6 +126,10 @@ godot::String FennaraLocalBridge::get_device_id() const {
     godot::Dictionary state = app_paths::read_json_first_existing(
         app_paths::runtime_state_read_paths(), &used_path);
     return godot::String(state.get("device_id", "")).strip_edges();
+}
+
+godot::String FennaraLocalBridge::get_chat_token() const {
+    return _chat_token;
 }
 
 void FennaraLocalBridge::_exit_tree() {

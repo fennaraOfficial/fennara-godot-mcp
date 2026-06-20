@@ -336,6 +336,7 @@ void FennaraExecutor::_on_async_tool_complete(const godot::Dictionary &result,
 
     godot::Dictionary wrapped;
     wrapped["tool"] = tool_name;
+    wrapped["raw_result"] = result;
     wrapped["result"] = tool_results::format_for_model(tool_name, tool_args, result);
     godot::Dictionary plugin_metadata = _tool_result_metadata(tool_name, tool_index);
     if (!plugin_incident_id.is_empty()) {

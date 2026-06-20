@@ -2,11 +2,38 @@
 
 #include "fennara/tool_results/envelope.hpp"
 
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 
 namespace fennara::tool_results {
+
+namespace {
+
+godot::String normalize_path_for_model(const godot::String &path) {
+    godot::String normalized = path.replace("\\", "/");
+    if (normalized.begins_with("res://") || normalized.begins_with("user://")) {
+        return normalized;
+    }
+
+    godot::ProjectSettings *settings = godot::ProjectSettings::get_singleton();
+    if (settings == nullptr) {
+        return normalized;
+    }
+
+    godot::String user_root =
+        settings->globalize_path("user://").replace("\\", "/");
+    if (!user_root.ends_with("/")) {
+        user_root += "/";
+    }
+    if (normalized.begins_with(user_root)) {
+        return "user://" + normalized.substr(user_root.length());
+    }
+    return normalized;
+}
+
+} // namespace
 
 godot::Dictionary format_runtime_script(const godot::Dictionary &raw_result) {
     godot::String status = raw_result.get("status", "unknown");
@@ -21,9 +48,13 @@ godot::Dictionary format_runtime_script(const godot::Dictionary &raw_result) {
     godot::String script_run_id = raw_result.get("script_run_id", "");
     godot::String script_path = raw_result.get("script_path", "");
     godot::String log_path = raw_result.get("log_path", "");
+    godot::String visible_log_path = normalize_path_for_model(log_path);
     godot::String runtime_session_artifact_dir =
         raw_result.get("runtime_session_artifact_dir", "");
+    godot::String visible_runtime_session_artifact_dir =
+        normalize_path_for_model(runtime_session_artifact_dir);
     godot::String captures_dir = raw_result.get("captures_dir", "");
+    godot::String visible_captures_dir = normalize_path_for_model(captures_dir);
     godot::Array captures = raw_result.get("captures", godot::Array());
     godot::Dictionary script_result = raw_result.get("result", godot::Dictionary());
     godot::Dictionary runtime_findings =
@@ -43,9 +74,18 @@ godot::Dictionary format_runtime_script(const godot::Dictionary &raw_result) {
                          godot::String(raw_result.get("diagnostic_error", "")));
         }
     }
-    if (!log_path.is_empty()) lines.append("Log file: " + log_path);
+    if (!visible_log_path.is_empty()) {
+        lines.append("Log file: " + visible_log_path);
+        if (visible_log_path != log_path) {
+            lines.append("Log file absolute: " + log_path.replace("\\", "/"));
+        }
+    }
     if (!runtime_session_artifact_dir.is_empty()) {
-        lines.append("Runtime session artifacts: " + runtime_session_artifact_dir);
+        lines.append("Runtime session artifacts: " + visible_runtime_session_artifact_dir);
+        if (visible_runtime_session_artifact_dir != runtime_session_artifact_dir) {
+            lines.append("Runtime session artifacts absolute: " +
+                         runtime_session_artifact_dir.replace("\\", "/"));
+        }
     }
     if (script_result.has("scene_closed")) {
         lines.append(
@@ -57,13 +97,20 @@ godot::Dictionary format_runtime_script(const godot::Dictionary &raw_result) {
             godot::String("Session active: ") +
             ((bool)script_result.get("session_active", false) ? "true" : "false"));
     }
-    if (!captures_dir.is_empty()) lines.append("Captures dir: " + captures_dir);
+    if (!visible_captures_dir.is_empty()) {
+        lines.append("Captures dir: " + visible_captures_dir);
+        if (visible_captures_dir != captures_dir) {
+            lines.append("Captures dir absolute: " + captures_dir.replace("\\", "/"));
+        }
+    }
     if (!captures.is_empty()) {
         lines.append("Captures: " + godot::String::num_int64(captures.size()));
         for (int i = 0; i < captures.size(); i++) {
             godot::Dictionary capture = captures[i];
+            godot::String image_path =
+                normalize_path_for_model(godot::String(capture.get("image_path", "")));
             lines.append("- " + godot::String(capture.get("label", "capture")) +
-                         ": " + godot::String(capture.get("image_path", "")));
+                         ": " + image_path);
         }
     }
     if ((bool)runtime_findings.get("has_findings", false)) {
@@ -93,9 +140,12 @@ godot::Dictionary format_runtime_script(const godot::Dictionary &raw_result) {
     metadata["session_id"] = session_id;
     metadata["script_run_id"] = script_run_id;
     metadata["script_path"] = script_path;
-    metadata["log_path"] = log_path;
-    metadata["runtime_session_artifact_dir"] = runtime_session_artifact_dir;
-    metadata["captures_dir"] = captures_dir;
+    metadata["log_path"] = visible_log_path;
+    metadata["raw_log_path"] = log_path;
+    metadata["runtime_session_artifact_dir"] = visible_runtime_session_artifact_dir;
+    metadata["raw_runtime_session_artifact_dir"] = runtime_session_artifact_dir;
+    metadata["captures_dir"] = visible_captures_dir;
+    metadata["raw_captures_dir"] = captures_dir;
     metadata["captures"] = captures;
     metadata["runtime_findings"] = runtime_findings;
     return make_envelope(godot::String("\n").join(lines),

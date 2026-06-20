@@ -2,6 +2,7 @@
 
 #include "fennara/tool_results/envelope.hpp"
 
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -10,6 +11,28 @@
 namespace fennara::tool_results {
 
 namespace {
+
+godot::String normalize_path_for_model(const godot::String &path) {
+    godot::String normalized = path.replace("\\", "/");
+    if (normalized.begins_with("res://") || normalized.begins_with("user://")) {
+        return normalized;
+    }
+
+    godot::ProjectSettings *settings = godot::ProjectSettings::get_singleton();
+    if (settings == nullptr) {
+        return normalized;
+    }
+
+    godot::String user_root =
+        settings->globalize_path("user://").replace("\\", "/");
+    if (!user_root.ends_with("/")) {
+        user_root += "/";
+    }
+    if (normalized.begins_with(user_root)) {
+        return "user://" + normalized.substr(user_root.length());
+    }
+    return normalized;
+}
 
 godot::String status_value(const godot::Dictionary &raw_result) {
     return godot::String(raw_result.get("status", "unknown"));
@@ -21,7 +44,12 @@ void append_if_present(godot::PackedStringArray &lines,
                        const godot::String &key) {
     godot::String value = raw_result.get(key, "");
     if (!value.is_empty()) {
-        lines.append(label + godot::String(": ") + value);
+        godot::String visible = normalize_path_for_model(value);
+        lines.append(label + godot::String(": ") + visible);
+        if (visible != value) {
+            lines.append(label + godot::String(" absolute: ") +
+                         value.replace("\\", "/"));
+        }
     }
 }
 

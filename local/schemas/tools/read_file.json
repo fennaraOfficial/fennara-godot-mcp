@@ -1,0 +1,28 @@
+{
+  "name": "read_file",
+  "description": "Read one or more files from the Godot project or the project's Godot user data folder. Supports res:// project paths and any user:// path for the current project, including logs, screenshots, runtime artifacts, saves, cache files, and tool result JSON. Use start_line/end_line for a specific range when reading large text files. Scene files (.tscn) are not readable; use get_scene_tree instead. Supported image files are sent to the model as vision inputs while the visible tool text shows only metadata, dimensions, and byte size. BLOCKED PATHS under res://: res://.godot/ (editor cache), res://.git/, res://addons/fennara/ (plugin internals). Hard limit: at most 5 files per call.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "file_paths": {
+        "type": "array",
+        "description": "File paths to read in one call. Hard limit: at most 5 files per call. Split larger batches into multiple calls.",
+        "items": {
+          "type": "string",
+          "description": "Path to the file relative to project root (e.g., 'scripts/player.gd'), a res:// path, a user:// path, or an absolute path"
+        },
+        "minItems": 1,
+        "maxItems": 5
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "Optional shared starting line number (1-based) applied to every text file in file_paths. Ignored for image files."
+      },
+      "end_line": {
+        "type": "integer",
+        "description": "Optional shared ending line number (1-based, inclusive) applied to every text file in file_paths. Ignored for image files."
+      }
+    },
+    "required": ["file_paths"]
+  }
+}

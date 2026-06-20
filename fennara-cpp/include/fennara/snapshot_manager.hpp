@@ -15,6 +15,7 @@ struct FileSnapshot {
 };
 
 struct TurnSnapshot {
+    godot::String chat_id;
     godot::String user_message;
     std::vector<FileSnapshot> files;
 };
@@ -37,7 +38,8 @@ private:
 
 public:
     // Called once before an AI turn starts
-    void begin_turn(const godot::String &user_message);
+    void begin_turn(const godot::String &user_message,
+                    const godot::String &chat_id);
 
     // Called before each file-modifying tool executes
     // Reads current file content and records it as "modified"
@@ -51,7 +53,8 @@ public:
 
     // Revert the most recent turn. Returns the user message to restore.
     // Returns empty string if nothing to revert.
-    godot::String revert();
+    godot::String revert(const godot::String &chat_id);
+    bool can_revert_chat(const godot::String &chat_id) const;
 
     // How many turns can be reverted
     int revert_count() const;

@@ -11,12 +11,14 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <chrono>
+
 namespace fennara {
 
 namespace {
 
-constexpr double STARTUP_GEOMETRY_DELAY_SECONDS = 1.6;
-constexpr int REQUIRED_STABLE_GEOMETRY_FRAMES = 3;
+constexpr double STARTUP_GEOMETRY_DELAY_SECONDS = 0.25;
+constexpr int REQUIRED_STABLE_GEOMETRY_FRAMES = 2;
 
 godot::Label *make_fallback_label(const godot::String &text) {
     godot::Label *label = memnew(godot::Label);
@@ -187,10 +189,15 @@ godot::String FennaraDock::_chat_url() const {
         path = settings->globalize_path(path);
     }
     path = path.replace("\\", "/");
-    if (path.begins_with("/")) {
-        return "file://" + path;
+    godot::String url = path.begins_with("/") ? "file://" + path : "file:///" + path;
+    const auto cache_bust = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count();
+    url += "?v=" + godot::String::num_int64(cache_bust);
+    if (local_bridge != nullptr && !local_bridge->get_chat_token().is_empty()) {
+        url += "&chat_token=" + local_bridge->get_chat_token();
     }
-    return "file:///" + path;
+    return url;
 }
 
 bool FennaraDock::_webview_region_is_stable() {

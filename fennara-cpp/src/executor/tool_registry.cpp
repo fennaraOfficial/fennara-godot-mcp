@@ -2,10 +2,12 @@
 #include "fennara/addon_access.hpp"
 #include "fennara/logger.hpp"
 
+#include "fennara/tools/file_ops/file_ops.hpp"
 #include "fennara/tools/get_class_info/get_class_info.hpp"
 #include "fennara/tools/get_node_properties/get_node_properties.hpp"
 #include "fennara/tools/get_scene_tree.hpp"
 #include "fennara/tools/project_settings.hpp"
+#include "fennara/tools/read_file.hpp"
 #include "fennara/tools/run_scene_edit_script.hpp"
 #include "fennara/tools/runtime_script.hpp"
 #include "fennara/tools/runtime_session.hpp"
@@ -51,6 +53,8 @@ godot::Dictionary blocked_tool_result(const godot::String &name,
     godot::Array blocked;
     if (name == "script_diagnostics") {
         append_array_blocks(args, "file_paths", blocked);
+    } else if (name == "read_file") {
+        append_array_blocks(args, "file_paths", blocked);
     } else if (name == "write_or_update_file") {
         append_if_blocked(args.get("file_path", ""), blocked);
         append_if_blocked(args.get("attach_to_scene", ""), blocked);
@@ -87,7 +91,9 @@ godot::Dictionary blocked_tool_result(const godot::String &name,
 } // namespace
 
 bool FennaraExecutor::has_tool(const godot::String &name) {
-    return name == "write_or_update_file" ||
+    return name == "read_file" ||
+           name == "file_ops" ||
+           name == "write_or_update_file" ||
            name == "get_scene_tree" ||
            name == "save_custom_resource" || name == "run_scene_edit_script" ||
            name == "script_diagnostics" ||
@@ -120,7 +126,9 @@ godot::Dictionary FennaraExecutor::execute_tool(const godot::String &name,
     }
 
     godot::Dictionary result;
-    if (name == "write_or_update_file") result = FennaraWriteOrUpdateFileTool::execute(args);
+    if (name == "read_file") result = FennaraReadFileTool::execute(args);
+    else if (name == "file_ops") result = FennaraFileOpsTool::execute(args);
+    else if (name == "write_or_update_file") result = FennaraWriteOrUpdateFileTool::execute(args);
     else if (name == "get_scene_tree") result = FennaraGetSceneTreeTool::execute(args);
     else if (name == "save_custom_resource") result = FennaraSaveCustomResourceTool::execute(args);
     else if (name == "run_scene_edit_script") result = FennaraRunSceneEditScriptTool::execute(args);

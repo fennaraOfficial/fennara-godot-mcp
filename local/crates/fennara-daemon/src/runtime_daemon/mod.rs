@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::{net::SocketAddr, time::Duration};
 use tokio::sync::oneshot;
 
+pub(crate) mod chat;
 pub(crate) mod docs_cache;
 pub(crate) mod godot_bridge;
 pub(crate) mod process_helpers;
@@ -28,6 +29,7 @@ pub async fn run() {
         .route("/health", get(health))
         .route("/status", get(godot_bridge::status))
         .route("/shutdown", post(shutdown))
+        .route("/chat/ws", get(chat::chat_ws))
         .route("/tools/call", post(godot_bridge::call_tool))
         .route(
             "/runtime/run-godot-scene",

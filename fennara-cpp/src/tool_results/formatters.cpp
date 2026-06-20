@@ -1,11 +1,13 @@
 #include "fennara/tool_results/formatters.hpp"
 
 #include "fennara/tool_results/envelope.hpp"
+#include "fennara/tool_results/file_ops.hpp"
 #include "fennara/tool_results/get_class_info.hpp"
 #include "fennara/tool_results/get_node_properties.hpp"
 #include "fennara/tool_results/get_scene_tree.hpp"
 #include "fennara/tool_results/script_diagnostics.hpp"
 #include "fennara/tool_results/project_settings.hpp"
+#include "fennara/tool_results/read_file.hpp"
 #include "fennara/tool_results/run_scene_edit_script.hpp"
 #include "fennara/tool_results/runtime_script.hpp"
 #include "fennara/tool_results/runtime_session.hpp"
@@ -41,6 +43,12 @@ godot::Dictionary format_for_model(const godot::String &tool_name,
     (void)args;
     if (is_envelope(raw_result)) {
         return append_update_notice(raw_result);
+    }
+    if (tool_name == "read_file") {
+        return append_update_notice(format_read_file(raw_result));
+    }
+    if (tool_name == "file_ops") {
+        return append_update_notice(format_file_ops(raw_result));
     }
     if (tool_name == "script_diagnostics") {
         return append_update_notice(format_script_diagnostics(args, raw_result));

@@ -2,6 +2,7 @@
 
 #include "fennara/executor.hpp"
 #include "fennara/local_bridge.hpp"
+#include "fennara/tools/file_ops/file_ops.hpp"
 #include "fennara/tools/get_scene_tree.hpp"
 #include "fennara/tools/script_diagnostics.hpp"
 #include "fennara/tools/write_or_update_file.hpp"
@@ -12,6 +13,7 @@
 #include "fennara/tools/validate_scene.hpp"
 #include "fennara/tools/run_scene_edit_script.hpp"
 #include "fennara/tools/project_settings.hpp"
+#include "fennara/tools/read_file.hpp"
 #include "fennara/tools/runtime_script.hpp"
 #include "fennara/tools/runtime_session.hpp"
 #include "fennara/tools/scrape_editor.hpp"
@@ -30,6 +32,8 @@ void initialize_fennara(godot::ModuleInitializationLevel p_level) {
     if (p_level == godot::MODULE_INITIALIZATION_LEVEL_SCENE) {
         // Keep tool registration centralized so release builds package the same plugin surface.
         godot::ClassDB::register_class<fennara::FennaraExecutor>();
+        godot::ClassDB::register_class<fennara::FennaraReadFileTool>();
+        godot::ClassDB::register_class<fennara::FennaraFileOpsTool>();
         godot::ClassDB::register_class<fennara::FennaraGetSceneTreeTool>();
         godot::ClassDB::register_class<fennara::FennaraWriteOrUpdateFileTool>();
         godot::ClassDB::register_class<fennara::FennaraScriptDiagnosticsTool>();

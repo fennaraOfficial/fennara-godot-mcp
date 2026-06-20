@@ -4,9 +4,12 @@
 #include "fennara/logger.hpp"
 
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/crypto.hpp>
+#include <godot_cpp/classes/marshalls.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
+#include <godot_cpp/classes/time.hpp>
 
 namespace fennara {
 
@@ -17,10 +20,13 @@ void FennaraLocalBridge::_send_hello() {
     payload["project_name"] = _project_name();
     payload["project_path"] = _project_path();
     payload["plugin_version"] = PLUGIN_VERSION;
+    payload["chat_token"] = _chat_token;
     payload["godot_version"] = godot::String(godot::Engine::get_singleton()->get_version_info()["string"]);
     payload["csharp_support"] = csharp_support::inspect_project();
 
     godot::Array tools;
+    tools.append("read_file");
+    tools.append("file_ops");
     tools.append("write_or_update_file");
     tools.append("run_scene_edit_script");
     tools.append("get_scene_tree");
@@ -218,6 +224,19 @@ void FennaraLocalBridge::_send_json(const godot::Dictionary &payload) {
 
 godot::String FennaraLocalBridge::_make_session_id() const {
     return _project_path() + "#" + godot::String::num_int64(godot::OS::get_singleton()->get_process_id());
+}
+
+godot::String FennaraLocalBridge::_make_chat_token() const {
+    godot::Ref<godot::Crypto> crypto;
+    crypto.instantiate();
+    if (crypto.is_valid()) {
+        godot::PackedByteArray bytes = crypto->generate_random_bytes(32);
+        return godot::Marshalls::get_singleton()->raw_to_base64(bytes)
+            .replace("+", "-")
+            .replace("/", "_")
+            .replace("=", "");
+    }
+    return _session_id.md5_text() + godot::String::num_int64(godot::Time::get_singleton()->get_ticks_msec());
 }
 
 godot::String FennaraLocalBridge::_project_name() const {

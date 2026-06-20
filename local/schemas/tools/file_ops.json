@@ -1,0 +1,40 @@
+{
+  "name": "file_ops",
+  "description": "Manage and explore project files using one consistent shape: each operation has only `operation` and `args`. Use forward-slash Godot paths (`res://...` preferred) for Windows, macOS, and Linux compatibility. Read-only list/glob/rg operations may inspect `res://...` project files and any `user://...` path in the current project's Godot user data folder, including logs, runtime artifacts, screenshots, saves, cache files, and saved result JSON. Write operations (copy, move, delete, create_dir) stay project-scoped; do not use them for `user://...` artifacts. Supports list, glob, rg, copy, move, delete, and create_dir. Read-only operations can be batched and may run in parallel; write operations always run sequentially. `rg` uses bundled ripgrep directly with an argument array, not a shell. The wrapper automatically adds safe output flags: `--no-messages`, `--with-filename`, `--no-heading`, `--path-separator /`, and metadata exclusion globs for `*.uid`, `*.import`, and `*.remap`. Hard limit: include at most 5 operations per call.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "parallel": {
+        "type": "boolean",
+        "description": "If true, contiguous read-only operations may execute in parallel while preserving result order. Write operations remain sequential. Default true."
+      },
+      "operations": {
+        "type": "array",
+        "description": "Array of file operations. Every item must use only `operation` and `args`. Positional contracts: list [path?, flags...]; glob [path, pattern, flags...]; rg [ripgrep flags..., pattern, paths...]; copy [source, destination, flags...]; move [source, destination, flags...]; delete [path, flags...]; create_dir [path].",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": ["list", "glob", "rg", "copy", "move", "delete", "create_dir"],
+              "description": "Operation name only. Never combine operation and path. Valid values: list, glob, rg, copy, move, delete, create_dir."
+            },
+            "args": {
+              "type": "array",
+              "description": "String tokens for the operation. Do not pass a shell command string. Put each flag/path/pattern in its own array item. Use forward slashes and `res://` paths where possible. For read-only list/glob/rg, any `user://...` path in the current project's Godot user data folder is allowed; use returned log, screenshot, runtime artifact, save, cache, and result JSON paths directly. Common flags: list --hidden --unimportant --files-only --dirs-only; glob --hidden --unimportant --dirs --max-results N; rg -n -S -e PATTERN --glob GLOB; copy --recursive --overwrite; move --overwrite; delete --recursive. For `rg`, do not pass `--max-columns` or `-M`.",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["operation", "args"]
+        },
+        "minItems": 1,
+        "maxItems": 5
+      }
+    },
+    "required": ["operations"],
+    "additionalProperties": false
+  }
+}
