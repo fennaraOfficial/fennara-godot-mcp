@@ -10,6 +10,10 @@ env = SConscript("godot-cpp/SConstruct")
 if env["platform"] == "windows":
     env.Append(CPPPATH=["vendor/webview/include", "vendor/webview2/include"])
     env.Append(LIBS=["advapi32", "comdlg32", "ole32", "shell32", "shlwapi", "user32", "version"])
+elif env["platform"] == "macos":
+    env.Append(CXXFLAGS=["-fblocks"])
+    env.Append(LINKFLAGS=["-framework", "Cocoa", "-framework", "WebKit"])
+    env.Append(LIBS=["dl"])
 
 # Auto-discover include directories
 for root, dirs, files in os.walk("include"):
@@ -22,6 +26,8 @@ env.VariantDir(build_dir, "src", duplicate=0)
 # Discover sources
 sources = glob.glob("src/**/*.cpp", recursive=True)
 sources += glob.glob("src/**/*.c", recursive=True)
+if env["platform"] == "macos":
+    sources += glob.glob("src/**/*.mm", recursive=True)
 
 build_sources = [s.replace("src", build_dir, 1) for s in sources]
 

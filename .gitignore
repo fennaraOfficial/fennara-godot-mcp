@@ -14,6 +14,7 @@ dist/
 !godot/addons/fennara/dist/
 !godot/addons/fennara/dist/**
 .package-preview/
+plans/
 
 godot/addons/fennara/bin/*
 !godot/addons/fennara/bin/.gitkeep

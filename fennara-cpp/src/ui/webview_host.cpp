@@ -17,6 +17,15 @@
 
 namespace fennara {
 
+#ifdef __APPLE__
+namespace mac_webview {
+bool start(void **webview, void **parent_window, godot::Control *owner, const godot::String &url);
+void resize_to(void *webview, void *parent_window, godot::Control *owner);
+void set_visible(void *webview, bool visible);
+void stop(void **webview, void **parent_window);
+} // namespace mac_webview
+#endif
+
 namespace {
 
 void output_log(const godot::String &message) {
@@ -145,6 +154,16 @@ bool WebviewHost::start(godot::Control *owner, const godot::String &url) {
     resize_to(owner);
     output_log("Web chat native webview started");
     return true;
+#elif defined(__APPLE__)
+    if (mac_webview::start(&webview, &parent_window, owner, url)) {
+        current_url = url;
+        started = true;
+        resize_to(owner);
+        output_log("Web chat native macOS webview started");
+        return true;
+    }
+    output_error("Web chat native macOS webview could not start");
+    return false;
 #else
     (void)owner;
     (void)url;
@@ -214,7 +233,11 @@ void WebviewHost::resize_to(godot::Control *owner) {
                    " h=" + godot::String::num_int64(geometry.height));
     }
 #else
+#ifdef __APPLE__
+    mac_webview::resize_to(webview, parent_window, owner);
+#else
     (void)owner;
+#endif
 #endif
 }
 
@@ -224,6 +247,8 @@ void WebviewHost::set_visible(bool visible) {
         return;
     }
     ShowWindow(reinterpret_cast<HWND>(widget), visible ? SW_SHOW : SW_HIDE);
+#elif defined(__APPLE__)
+    mac_webview::set_visible(webview, visible);
 #else
     (void)visible;
 #endif
@@ -239,6 +264,8 @@ void WebviewHost::stop() {
     if (webview != nullptr) {
         webview_destroy(static_cast<webview_t>(webview));
     }
+#elif defined(__APPLE__)
+    mac_webview::stop(&webview, &parent_window);
 #endif
 
     webview = nullptr;
