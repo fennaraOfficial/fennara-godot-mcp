@@ -19,17 +19,17 @@ use state::AppState;
 
 pub(crate) const DAEMON_HOST: &str = "127.0.0.1";
 pub(crate) const DAEMON_PORT: u16 = 41287;
+pub(crate) const CHAT_PORT: u16 = 41288;
 pub(crate) const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub async fn run() {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let state = AppState::new(shutdown_tx);
 
-    let app = Router::new()
+    let daemon_app = Router::new()
         .route("/health", get(health))
         .route("/status", get(godot_bridge::status))
         .route("/shutdown", post(shutdown))
-        .route("/chat/ws", get(chat::chat_ws))
         .route("/tools/call", post(godot_bridge::call_tool))
         .route(
             "/runtime/run-godot-scene",
@@ -56,22 +56,38 @@ pub async fn run() {
             post(runtime_sessions::runtime_session_script),
         )
         .route("/godot/ws", get(godot_bridge::godot_ws))
+        .with_state(state.clone());
+
+    let chat_app = Router::new()
+        .route("/health", get(health))
+        .route("/status", get(godot_bridge::status))
+        .route("/chat/ws", get(chat::chat_ws))
         .with_state(state);
 
-    let addr: SocketAddr = format!("{DAEMON_HOST}:{DAEMON_PORT}")
+    let daemon_addr: SocketAddr = format!("{DAEMON_HOST}:{DAEMON_PORT}")
         .parse()
         .expect("daemon bind address should be valid");
-    let listener = tokio::net::TcpListener::bind(addr)
+    let chat_addr: SocketAddr = format!("{DAEMON_HOST}:{CHAT_PORT}")
+        .parse()
+        .expect("chat bind address should be valid");
+    let daemon_listener = tokio::net::TcpListener::bind(daemon_addr)
         .await
         .expect("failed to bind fennara daemon");
-
-    eprintln!("fennara-daemon listening on http://{addr}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = shutdown_rx.await;
-        })
+    let chat_listener = tokio::net::TcpListener::bind(chat_addr)
         .await
-        .expect("fennara daemon stopped unexpectedly");
+        .expect("failed to bind fennara chat daemon");
+
+    eprintln!("fennara-daemon listening on http://{daemon_addr}");
+    eprintln!("fennara-chat listening on http://{chat_addr}");
+    tokio::select! {
+        result = axum::serve(daemon_listener, daemon_app) => {
+            result.expect("fennara daemon stopped unexpectedly");
+        }
+        result = axum::serve(chat_listener, chat_app) => {
+            result.expect("fennara chat daemon stopped unexpectedly");
+        }
+        _ = shutdown_rx => {}
+    }
 }
 
 async fn health() -> Json<Value> {

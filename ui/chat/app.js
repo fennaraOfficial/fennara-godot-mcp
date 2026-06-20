@@ -1,5 +1,5 @@
 (function () {
-  const DAEMON_WS_URL = "ws://127.0.0.1:41287/chat/ws";
+  const DAEMON_WS_URL = "ws://127.0.0.1:41288/chat/ws";
   const PROMPT_MAX_HEIGHT = 126;
   const USER_COLLAPSE_CHARS = 700;
   const AUTO_SCROLL_THRESHOLD = 72;
