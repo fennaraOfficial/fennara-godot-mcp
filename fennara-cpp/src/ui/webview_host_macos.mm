@@ -80,8 +80,8 @@ godot::String view_debug_string(WKWebView *view) {
 
 struct Geometry {
     bool visible = false;
-    double local_x = 0.0;
-    double local_y = 0.0;
+    double global_x = 0.0;
+    double global_y = 0.0;
     double width = 0.0;
     double height = 0.0;
 };
@@ -116,8 +116,8 @@ Geometry compute_geometry(godot::Control *owner) {
     godot::Vector2 global_position = owner->get_global_position();
     godot::Vector2 position = owner->get_position();
     geometry.visible = true;
-    geometry.local_x = position.x;
-    geometry.local_y = position.y;
+    geometry.global_x = global_position.x;
+    geometry.global_y = global_position.y;
     geometry.width = size.x;
     geometry.height = size.y;
     debug_log("macOS webview geometry visible screen=" +
@@ -149,10 +149,10 @@ NSRect frame_for_geometry(NSWindow *window, Geometry geometry) {
         backing_scale = 1.0;
     }
 
-    CGFloat x = geometry.local_x / backing_scale;
+    CGFloat x = geometry.global_x / backing_scale;
     CGFloat width = geometry.width / backing_scale;
     CGFloat height = geometry.height / backing_scale;
-    CGFloat y = NSMaxY(bounds) - ((geometry.local_y + geometry.height) / backing_scale);
+    CGFloat y = NSMaxY(bounds) - ((geometry.global_y + geometry.height) / backing_scale);
     NSRect local_rect = NSMakeRect(x, y, width, height);
 
     if (!NSIntersectsRect(local_rect, bounds)) {
@@ -162,8 +162,8 @@ NSRect frame_for_geometry(NSWindow *window, Geometry geometry) {
     debug_log("macOS webview frame local window=" + ptr_string(window) +
               " content=" + ptr_string(content) +
               " backing_scale=" + godot::String::num(backing_scale) +
-              " local_input=(" + godot::String::num(geometry.local_x) + "," +
-              godot::String::num(geometry.local_y) + " " +
+              " global_input=(" + godot::String::num(geometry.global_x) + "," +
+              godot::String::num(geometry.global_y) + " " +
               godot::String::num(geometry.width) + "x" +
               godot::String::num(geometry.height) + ")" +
               " frame=(" + rect_string(local_rect) + ")" +
