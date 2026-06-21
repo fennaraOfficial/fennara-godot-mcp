@@ -14,6 +14,9 @@ elif env["platform"] == "macos":
     env.Append(CXXFLAGS=["-fblocks"])
     env.Append(LINKFLAGS=["-framework", "Cocoa", "-framework", "WebKit"])
     env.Append(LIBS=["dl"])
+elif env["platform"] == "linux":
+    env.Append(CPPPATH=["vendor/webview/include"])
+    env.ParseConfig("pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.1")
 
 # Auto-discover include directories
 for root, dirs, files in os.walk("include"):

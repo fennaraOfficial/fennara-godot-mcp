@@ -18,7 +18,7 @@ node scripts/sync-chat-ui.mjs
 
 - Match Godot editor surfaces: compact controls, quiet contrast, small radii,
   clear focus states, and no marketing-style hero treatment.
-- Avoid backend assumptions. The UI talks to local Fennara services only.
+- Use only local Fennara daemon/chat APIs; do not require hosted services.
 - OpenRouter support should use a user-provided key stored locally outside the
   Godot project.
 - Keep the UI useful without a model connection: status, settings, transcript,

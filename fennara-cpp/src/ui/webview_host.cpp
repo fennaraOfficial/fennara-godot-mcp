@@ -13,6 +13,11 @@
 #include <webview/webview.h>
 #endif
 
+#ifdef __linux__
+#include <gtk/gtk.h>
+#include <webview/webview.h>
+#endif
+
 #include <string>
 
 namespace fennara {
@@ -83,6 +88,31 @@ bool editor_is_headless() {
     return (os != nullptr && os->has_feature("headless")) ||
            (display != nullptr && display->get_name().to_lower() == "headless");
 }
+
+#ifdef __linux__
+bool linux_webview_debug_enabled() {
+    godot::OS *os = godot::OS::get_singleton();
+    return os != nullptr && os->get_environment("FENNARA_LINUX_WEBVIEW_DEBUG") == "1";
+}
+
+void linux_webview_debug_log(const godot::String &message) {
+    if (!linux_webview_debug_enabled()) {
+        return;
+    }
+    output_log(godot::String("Linux webview debug: ") + message);
+}
+
+void pump_linux_webview_events() {
+    int iterations = 0;
+    while (g_main_context_pending(nullptr) && iterations < 64) {
+        g_main_context_iteration(nullptr, FALSE);
+        iterations++;
+    }
+    if (iterations > 0) {
+        linux_webview_debug_log("pumped gtk events count=" + godot::String::num_int64(iterations));
+    }
+}
+#endif
 
 } // namespace
 
@@ -164,6 +194,54 @@ bool WebviewHost::start(godot::Control *owner, const godot::String &url) {
     }
     output_error("Web chat native macOS webview could not start");
     return false;
+#elif defined(__linux__)
+    if (owner == nullptr) {
+        output_error("Web chat host cannot start: owner Control is null");
+        return false;
+    }
+
+    WebviewGeometry geometry = compute_webview_geometry(owner);
+    int width = geometry.width > 0 ? geometry.width : 420;
+    int height = geometry.height > 0 ? geometry.height : 720;
+    linux_webview_debug_log("start requested visible=" +
+                            godot::String(geometry.visible ? "true" : "false") +
+                            " owner_size=" + godot::String::num_int64(geometry.width) +
+                            "x" + godot::String::num_int64(geometry.height) +
+                            " initial_window_size=" + godot::String::num_int64(width) +
+                            "x" + godot::String::num_int64(height));
+
+    webview = webview_create(0, nullptr);
+    if (webview == nullptr) {
+        output_error("Web chat Linux WebKitGTK host cannot start: webview_create returned null");
+        return false;
+    }
+
+    parent_window = webview_get_native_handle(
+        static_cast<webview_t>(webview),
+        WEBVIEW_NATIVE_HANDLE_KIND_UI_WINDOW);
+    widget = webview_get_native_handle(
+        static_cast<webview_t>(webview),
+        WEBVIEW_NATIVE_HANDLE_KIND_UI_WIDGET);
+    linux_webview_debug_log("native handles webview=" +
+                            godot::String::num_int64(reinterpret_cast<int64_t>(webview)) +
+                            " window=" +
+                            godot::String::num_int64(reinterpret_cast<int64_t>(parent_window)) +
+                            " widget=" +
+                            godot::String::num_int64(reinterpret_cast<int64_t>(widget)));
+
+    webview_set_title(static_cast<webview_t>(webview), "Fennara");
+    webview_set_size(static_cast<webview_t>(webview), width, height, WEBVIEW_HINT_NONE);
+
+    std::string url_utf8 = url.utf8().get_data();
+    webview_navigate(static_cast<webview_t>(webview), url_utf8.c_str());
+
+    current_url = url;
+    started = true;
+    last_width = width;
+    last_height = height;
+    pump_linux_webview_events();
+    output_log("Web chat native Linux WebKitGTK window started");
+    return true;
 #else
     (void)owner;
     (void)url;
@@ -235,6 +313,34 @@ void WebviewHost::resize_to(godot::Control *owner) {
 #else
 #ifdef __APPLE__
     mac_webview::resize_to(webview, &parent_window, owner);
+#elif defined(__linux__)
+    WebviewGeometry geometry = compute_webview_geometry(owner);
+    if (parent_window != nullptr) {
+        GtkWidget *window = static_cast<GtkWidget *>(parent_window);
+        if (!geometry.visible) {
+            linux_webview_debug_log("resize hiding window: owner not visible");
+            gtk_widget_hide(window);
+        } else {
+            gtk_widget_show(window);
+            if (geometry.width > 0 && geometry.height > 0 &&
+                (geometry.width != last_width || geometry.height != last_height)) {
+                linux_webview_debug_log("resize window size=" +
+                                        godot::String::num_int64(geometry.width) +
+                                        "x" + godot::String::num_int64(geometry.height) +
+                                        " previous=" + godot::String::num_int64(last_width) +
+                                        "x" + godot::String::num_int64(last_height));
+                webview_set_size(static_cast<webview_t>(webview),
+                                 geometry.width,
+                                 geometry.height,
+                                 WEBVIEW_HINT_NONE);
+                last_width = geometry.width;
+                last_height = geometry.height;
+            }
+        }
+    } else {
+        linux_webview_debug_log("resize skipped: native window handle is null");
+    }
+    pump_linux_webview_events();
 #else
     (void)owner;
 #endif
@@ -249,6 +355,23 @@ void WebviewHost::set_visible(bool visible) {
     ShowWindow(reinterpret_cast<HWND>(widget), visible ? SW_SHOW : SW_HIDE);
 #elif defined(__APPLE__)
     mac_webview::set_visible(webview, visible);
+#elif defined(__linux__)
+    if (!started || parent_window == nullptr) {
+        linux_webview_debug_log("set_visible skipped started=" +
+                                godot::String(started ? "true" : "false") +
+                                " window_null=" +
+                                godot::String(parent_window == nullptr ? "true" : "false"));
+        return;
+    }
+    linux_webview_debug_log(godot::String("set_visible ") +
+                            (visible ? godot::String("true") : godot::String("false")));
+    GtkWidget *window = static_cast<GtkWidget *>(parent_window);
+    if (visible) {
+        gtk_widget_show(window);
+    } else {
+        gtk_widget_hide(window);
+    }
+    pump_linux_webview_events();
 #else
     (void)visible;
 #endif
@@ -266,6 +389,12 @@ void WebviewHost::stop() {
     }
 #elif defined(__APPLE__)
     mac_webview::stop(&webview, &parent_window);
+#elif defined(__linux__)
+    output_log("Web chat destroying Linux WebKitGTK window");
+    if (webview != nullptr) {
+        webview_destroy(static_cast<webview_t>(webview));
+        pump_linux_webview_events();
+    }
 #endif
 
     webview = nullptr;
