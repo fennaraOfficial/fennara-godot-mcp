@@ -23,14 +23,16 @@ private:
     void *widget = nullptr;
     void *parent_window = nullptr;
     godot::String current_url;
+    godot::String helper_state_path;
+    godot::String helper_log_path;
     bool started = false;
+    int32_t helper_pid = 0;
     int current_window_id = -1;
     int last_x = -1;
     int last_y = -1;
     int last_width = -1;
     int last_height = -1;
     int last_visible_state = -1;
-    int last_geometry_visible_state = -1;
 };
 
 } // namespace fennara

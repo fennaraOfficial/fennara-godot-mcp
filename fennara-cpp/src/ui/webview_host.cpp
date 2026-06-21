@@ -3,18 +3,16 @@
 #include "fennara/logger.hpp"
 
 #include <godot_cpp/classes/display_server.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <webview/webview.h>
-#endif
-
-#ifdef __linux__
-#include <gtk/gtk.h>
 #include <webview/webview.h>
 #endif
 
@@ -90,66 +88,48 @@ bool editor_is_headless() {
 }
 
 #ifdef __linux__
-bool linux_webview_debug_enabled() {
-    godot::OS *os = godot::OS::get_singleton();
-    return os != nullptr && os->get_environment("FENNARA_LINUX_WEBVIEW_DEBUG") == "1";
+godot::String globalize_project_path(const godot::String &path) {
+    godot::ProjectSettings *settings = godot::ProjectSettings::get_singleton();
+    return settings == nullptr ? path : settings->globalize_path(path);
 }
 
-void linux_webview_debug_log(const godot::String &message) {
-    if (!linux_webview_debug_enabled()) {
-        return;
-    }
-    output_log(godot::String("Linux webview debug: ") + message);
+godot::String linux_helper_binary_path() {
+    return globalize_project_path("res://addons/fennara/bin/fennara-chat-webview");
 }
 
-godot::String linux_display_summary() {
-    godot::String summary = "unknown";
-    GdkDisplay *display = gdk_display_get_default();
-    if (display != nullptr) {
-        const char *name = gdk_display_get_name(display);
-        summary = godot::String(name != nullptr ? name : "unnamed");
-    }
-
-    godot::DisplayServer *godot_display = godot::DisplayServer::get_singleton();
-    if (godot_display != nullptr) {
-        summary += " godot_display=" + godot_display->get_name();
-    }
-    return summary;
+godot::String linux_helper_state_path() {
+    return globalize_project_path("user://.fennara/webview-helper-state.txt");
 }
 
-godot::String linux_owner_summary(godot::Control *owner, const WebviewGeometry &geometry) {
-    if (owner == nullptr) {
-        return "owner=null";
-    }
-
-    godot::Vector2 size = owner->get_size();
-    godot::Vector2 global_position = owner->get_global_position();
-    godot::Vector2 screen_position = owner->get_screen_position();
-
-    return "owner_window_id=" + godot::String::num_int64(owner_window_id(owner)) +
-           " visible=" + godot::String(owner->is_visible_in_tree() ? "true" : "false") +
-           " geom_visible=" + godot::String(geometry.visible ? "true" : "false") +
-           " global=(" + godot::String::num(global_position.x) +
-           "," + godot::String::num(global_position.y) + ")" +
-           " screen=(" + godot::String::num(screen_position.x) +
-           "," + godot::String::num(screen_position.y) + ")" +
-           " size=(" + godot::String::num(size.x) +
-           "," + godot::String::num(size.y) + ")" +
-           " computed=(" + godot::String::num_int64(geometry.x) +
-           "," + godot::String::num_int64(geometry.y) +
-           "," + godot::String::num_int64(geometry.width) +
-           "x" + godot::String::num_int64(geometry.height) + ")";
+godot::String linux_helper_log_path() {
+    return globalize_project_path("user://.fennara/webview-helper.log");
 }
 
-void pump_linux_webview_events() {
-    int iterations = 0;
-    while (g_main_context_pending(nullptr) && iterations < 64) {
-        g_main_context_iteration(nullptr, FALSE);
-        iterations++;
+void ensure_parent_dir(const godot::String &path) {
+    const godot::String base_dir = path.get_base_dir();
+    if (!base_dir.is_empty()) {
+        godot::DirAccess::make_dir_recursive_absolute(base_dir);
     }
-    if (iterations >= 64) {
-        linux_webview_debug_log("gtk event pump hit iteration cap");
+}
+
+bool write_linux_helper_state(const godot::String &path, const WebviewGeometry &geometry) {
+    if (path.is_empty()) {
+        return false;
     }
+    ensure_parent_dir(path);
+
+    godot::Ref<godot::FileAccess> file =
+        godot::FileAccess::open(path, godot::FileAccess::WRITE);
+    if (file.is_null()) {
+        return false;
+    }
+
+    file->store_string(godot::String("visible=") + (geometry.visible ? "1" : "0") + "\n");
+    file->store_string("x=" + godot::String::num_int64(geometry.x) + "\n");
+    file->store_string("y=" + godot::String::num_int64(geometry.y) + "\n");
+    file->store_string("width=" + godot::String::num_int64(geometry.width) + "\n");
+    file->store_string("height=" + godot::String::num_int64(geometry.height) + "\n");
+    return true;
 }
 #endif
 
@@ -234,50 +214,54 @@ bool WebviewHost::start(godot::Control *owner, const godot::String &url) {
     output_error("Web chat native macOS webview could not start");
     return false;
 #elif defined(__linux__)
-    if (owner == nullptr) {
-        output_error("Web chat host cannot start: owner Control is null");
-        return false;
-    }
-
-    WebviewGeometry geometry = compute_webview_geometry(owner);
-    int width = geometry.width > 0 ? geometry.width : 420;
-    int height = geometry.height > 0 ? geometry.height : 720;
-    linux_webview_debug_log("start display=" + linux_display_summary());
-    linux_webview_debug_log("start " + linux_owner_summary(owner, geometry) +
-                            " initial_window_size=" + godot::String::num_int64(width) +
-                            "x" + godot::String::num_int64(height));
-
-    webview = webview_create(0, nullptr);
-    if (webview == nullptr) {
-        output_error("Web chat Linux WebKitGTK host cannot start: webview_create returned null");
-        return false;
-    }
-
-    parent_window = webview_get_native_handle(
-        static_cast<webview_t>(webview),
-        WEBVIEW_NATIVE_HANDLE_KIND_UI_WINDOW);
-    widget = webview_get_native_handle(
-        static_cast<webview_t>(webview),
-        WEBVIEW_NATIVE_HANDLE_KIND_UI_WIDGET);
-    linux_webview_debug_log("native handles webview=" +
-                            godot::String::num_int64(reinterpret_cast<int64_t>(webview)) +
-                            " window=" +
-                            godot::String::num_int64(reinterpret_cast<int64_t>(parent_window)) +
-                            " widget=" +
-                            godot::String::num_int64(reinterpret_cast<int64_t>(widget)));
-
-    webview_set_title(static_cast<webview_t>(webview), "Fennara");
-    webview_set_size(static_cast<webview_t>(webview), width, height, WEBVIEW_HINT_NONE);
-
-    std::string url_utf8 = url.utf8().get_data();
-    webview_navigate(static_cast<webview_t>(webview), url_utf8.c_str());
-
     current_url = url;
+    godot::OS *os = godot::OS::get_singleton();
+    if (os == nullptr) {
+        output_error("Web chat Linux helper cannot start: OS singleton is unavailable");
+        return false;
+    }
+
+    const godot::String helper_path = linux_helper_binary_path();
+    if (!godot::FileAccess::file_exists(helper_path)) {
+        output_error("Web chat Linux helper is missing: " + helper_path);
+        return false;
+    }
+
+    helper_state_path = linux_helper_state_path();
+    helper_log_path = linux_helper_log_path();
+    WebviewGeometry geometry = compute_webview_geometry(owner);
+    if (!write_linux_helper_state(helper_state_path, geometry)) {
+        output_error("Web chat Linux helper cannot write state file: " + helper_state_path);
+        return false;
+    }
+
+    ensure_parent_dir(helper_log_path);
+    godot::PackedStringArray args;
+    args.append("--url");
+    args.append(url);
+    args.append("--state");
+    args.append(helper_state_path);
+    args.append("--log");
+    args.append(helper_log_path);
+    if (os->get_environment("FENNARA_LINUX_WEBVIEW_DEBUG") == "1") {
+        args.append("--debug");
+    }
+
+    helper_pid = os->create_process(helper_path, args, false);
+    if (helper_pid <= 0) {
+        output_error("Web chat Linux helper failed to start: " + helper_path);
+        return false;
+    }
+
     started = true;
-    last_width = width;
-    last_height = height;
-    pump_linux_webview_events();
-    output_log("Web chat native Linux WebKitGTK window started");
+    last_x = geometry.x;
+    last_y = geometry.y;
+    last_width = geometry.width;
+    last_height = geometry.height;
+    last_visible_state = geometry.visible ? 1 : 0;
+    output_log("Web chat Linux helper started pid=" + godot::String::num_int64(helper_pid) +
+               " state=" + helper_state_path +
+               " log=" + helper_log_path);
     return true;
 #else
     (void)owner;
@@ -352,30 +336,21 @@ void WebviewHost::resize_to(godot::Control *owner) {
     mac_webview::resize_to(webview, &parent_window, owner);
 #elif defined(__linux__)
     WebviewGeometry geometry = compute_webview_geometry(owner);
-    int geometry_visible_state = geometry.visible ? 1 : 0;
-    if (geometry_visible_state != last_geometry_visible_state ||
-        geometry.x != last_x || geometry.y != last_y ||
-        geometry.width != last_width || geometry.height != last_height) {
-        linux_webview_debug_log("dock geometry " + linux_owner_summary(owner, geometry));
-        last_x = geometry.x;
-        last_y = geometry.y;
-        last_geometry_visible_state = geometry_visible_state;
+    if (geometry.x != last_x || geometry.y != last_y || geometry.width != last_width ||
+        geometry.height != last_height || (geometry.visible ? 1 : 0) != last_visible_state) {
+        if (write_linux_helper_state(helper_state_path, geometry)) {
+            last_x = geometry.x;
+            last_y = geometry.y;
+            last_width = geometry.width;
+            last_height = geometry.height;
+            last_visible_state = geometry.visible ? 1 : 0;
+            output_log("Web chat Linux helper state x=" + godot::String::num_int64(geometry.x) +
+                       " y=" + godot::String::num_int64(geometry.y) +
+                       " w=" + godot::String::num_int64(geometry.width) +
+                       " h=" + godot::String::num_int64(geometry.height) +
+                       " visible=" + godot::String::num_int64(last_visible_state));
+        }
     }
-    if (geometry.visible && geometry.width > 0 && geometry.height > 0 &&
-        (geometry.width != last_width || geometry.height != last_height)) {
-        linux_webview_debug_log("resize standalone window size=" +
-                                godot::String::num_int64(geometry.width) +
-                                "x" + godot::String::num_int64(geometry.height) +
-                                " previous=" + godot::String::num_int64(last_width) +
-                                "x" + godot::String::num_int64(last_height));
-        webview_set_size(static_cast<webview_t>(webview),
-                         geometry.width,
-                         geometry.height,
-                         WEBVIEW_HINT_NONE);
-        last_width = geometry.width;
-        last_height = geometry.height;
-    }
-    pump_linux_webview_events();
 #else
     (void)owner;
 #endif
@@ -391,16 +366,17 @@ void WebviewHost::set_visible(bool visible) {
 #elif defined(__APPLE__)
     mac_webview::set_visible(webview, visible);
 #elif defined(__linux__)
-    if (!started) {
-        return;
+    WebviewGeometry geometry;
+    geometry.visible = visible;
+    geometry.x = last_x < 0 ? 0 : last_x;
+    geometry.y = last_y < 0 ? 0 : last_y;
+    geometry.width = last_width < 1 ? 420 : last_width;
+    geometry.height = last_height < 1 ? 640 : last_height;
+    if (write_linux_helper_state(helper_state_path, geometry)) {
+        last_visible_state = visible ? 1 : 0;
+        output_log("Web chat Linux helper visibility=" +
+                   godot::String::num_int64(last_visible_state));
     }
-    int visible_state = visible ? 1 : 0;
-    if (visible_state != last_visible_state) {
-        linux_webview_debug_log(godot::String("standalone window ignores dock visibility request ") +
-                                (visible ? godot::String("true") : godot::String("false")));
-        last_visible_state = visible_state;
-    }
-    pump_linux_webview_events();
 #else
     (void)visible;
 #endif
@@ -419,24 +395,28 @@ void WebviewHost::stop() {
 #elif defined(__APPLE__)
     mac_webview::stop(&webview, &parent_window);
 #elif defined(__linux__)
-    output_log("Web chat destroying Linux WebKitGTK window");
-    if (webview != nullptr) {
-        webview_destroy(static_cast<webview_t>(webview));
-        pump_linux_webview_events();
+    if (helper_pid > 0) {
+        godot::OS *os = godot::OS::get_singleton();
+        if (os != nullptr && os->is_process_running(helper_pid)) {
+            os->kill(helper_pid);
+        }
     }
+    output_log("Web chat Linux helper stopped pid=" + godot::String::num_int64(helper_pid));
 #endif
 
     webview = nullptr;
     widget = nullptr;
     parent_window = nullptr;
+    helper_state_path = "";
+    helper_log_path = "";
     started = false;
+    helper_pid = 0;
     current_window_id = -1;
     last_x = -1;
     last_y = -1;
     last_width = -1;
     last_height = -1;
     last_visible_state = -1;
-    last_geometry_visible_state = -1;
 }
 
 bool WebviewHost::is_started() const {

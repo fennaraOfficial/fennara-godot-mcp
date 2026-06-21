@@ -15,9 +15,7 @@ elif env["platform"] == "macos":
     env.Append(LINKFLAGS=["-framework", "Cocoa", "-framework", "WebKit"])
     env.Append(LIBS=["dl"])
 elif env["platform"] == "linux":
-    env.Append(CPPPATH=["vendor/webview/include"])
-    env.Append(CXXFLAGS=["-fexceptions"])
-    env.ParseConfig("pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.1")
+    env.Append(LIBS=["dl"])
 
 # Auto-discover include directories
 for root, dirs, files in os.walk("include"):
@@ -50,4 +48,17 @@ else:
         source=build_sources,
     )
 
-Default(library)
+targets = [library]
+
+if env["platform"] == "linux":
+    helper_env = env.Clone()
+    helper_env.Append(CPPPATH=["vendor/webview/include"])
+    helper_env.Append(CXXFLAGS=["-fexceptions"])
+    helper_env.ParseConfig("pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.1")
+    helper = helper_env.Program(
+        "{}/fennara-chat-webview".format(out_dir),
+        source=["helpers/linux_chat_webview.cpp"],
+    )
+    targets.append(helper)
+
+Default(targets)

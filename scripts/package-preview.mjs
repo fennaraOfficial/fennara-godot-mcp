@@ -104,7 +104,10 @@ function isAddonBinary(relative) {
     return relative === "bin/libfennara.windows.editor.x86_64.dll";
   }
   if (platform === "linux") {
-    return relative === "bin/libfennara.linux.editor.x86_64.so";
+    return (
+      relative === "bin/libfennara.linux.editor.x86_64.so" ||
+      relative === "bin/fennara-chat-webview"
+    );
   }
   if (platform === "macos") {
     return (
