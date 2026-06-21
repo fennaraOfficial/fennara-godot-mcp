@@ -70,6 +70,24 @@ AGENTS.md
 
 If `AGENTS.md` already exists, Fennara only updates the generated block between its own markers.
 
+On Linux, Fennara also uses a shared browser runtime location for the embedded
+chat CEF runtime:
+
+```text
+~/.local/share/fennara/webview/cef/linux-x64/<cef-version>
+```
+
+The CEF browser payload is installed once per user and shared across Godot
+projects/editors. It is not copied into `addons/fennara`. The Linux chat dock
+renders through that shared runtime when it is present; until the CEF runtime
+asset is selected, `fennara install`, `fennara update`, and `fennara doctor`
+report the reserved layout instead of downloading a placeholder.
+
+The shared CEF runtime directory is read-only during normal browser use. Each
+open Godot editor gets its own writable CEF profile/cache/log directories under
+the Fennara app-data `cache/webview/profiles/cef/` and `logs/webview/cef/`
+roots, so multiple editors can keep embedded chat open at the same time.
+
 ## 3. Configure Your MCP App
 
 Claude Code and Claude Desktop:

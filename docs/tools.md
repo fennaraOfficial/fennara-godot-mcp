@@ -192,6 +192,10 @@ Use this to start, check, or stop a managed running scene. Start returns a
 `session_id` and a `runtime_session.log` path. Treat that log as the source of
 truth for startup output and runtime errors.
 
+The daemon currently allows one managed runtime session globally across all
+connected Godot editors. If another managed scene is running, stop or inspect
+that session before starting a new one.
+
 Example prompt:
 
 ```text

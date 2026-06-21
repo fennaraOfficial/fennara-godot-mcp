@@ -89,6 +89,34 @@ godot::String app_dir() {
     return paths.is_empty() ? godot::String() : paths[0];
 }
 
+godot::PackedStringArray webview_dir_candidates() {
+    godot::PackedStringArray paths;
+    const godot::PackedStringArray dirs = app_dir_candidates();
+    for (int i = 0; i < dirs.size(); i++) {
+        append_if_present(paths, dirs[i].path_join("webview"));
+    }
+    return paths;
+}
+
+godot::String webview_dir() {
+    const godot::PackedStringArray paths = webview_dir_candidates();
+    return paths.is_empty() ? godot::String() : paths[0];
+}
+
+godot::String webview_profile_dir() {
+    const godot::String dir = app_dir();
+    return dir.is_empty()
+               ? godot::String()
+               : dir.path_join("cache").path_join("webview").path_join("profiles");
+}
+
+godot::String webview_log_dir() {
+    const godot::String dir = app_dir();
+    return dir.is_empty()
+               ? godot::String()
+               : dir.path_join("logs").path_join("webview");
+}
+
 godot::String csharp_ls_binary_path() {
     const godot::PackedStringArray paths = app_dir_candidates();
     const godot::String name = binary_name("csharp-ls");

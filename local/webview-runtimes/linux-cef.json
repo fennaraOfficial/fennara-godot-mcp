@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "runtime": "cef",
+  "platform": "linux",
+  "arch": "x86_64",
+  "platform_arch": "linux-x64",
+  "version": "TODO-select-cef-version",
+  "enabled": false,
+  "layout": "webview/cef/linux-x64/<cef-version> with webview/cef/linux-x64/current.json pointing at the selected version",
+  "required_files": [
+    "libcef.so",
+    "fennara_cef_helper",
+    "icudtl.dat",
+    "resources.pak",
+    "chrome_100_percent.pak",
+    "chrome_200_percent.pak",
+    "v8_context_snapshot.bin",
+    "locales/en-US.pak"
+  ],
+  "archive": {
+    "format": "zip",
+    "name": null,
+    "url": null,
+    "sha256": null
+  },
+  "notes": "CEF is intentionally installed once under the shared Fennara app-data directory instead of being copied into every Godot project addon. Fill version, archive name or URL, and sha256 when the Linux CEF runtime asset is selected."
+}

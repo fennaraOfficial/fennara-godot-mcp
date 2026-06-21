@@ -50,7 +50,7 @@ bool WebviewHost::start(godot::Control *owner, const godot::String &url) {
     }
 
     if (editor_is_headless()) {
-        webview_backend::output_log("Web chat host skipped: headless editor has no native window");
+        webview_backend::output_log("Web chat host skipped: headless editor has no display surface");
         return false;
     }
 
@@ -59,6 +59,24 @@ bool WebviewHost::start(godot::Control *owner, const godot::String &url) {
         return false;
     }
     return backend->start(owner, url);
+}
+
+bool WebviewHost::uses_internal_surface() const {
+    return backend != nullptr &&
+           backend->surface_mode() == webview_backend::WebviewSurfaceMode::InternalGodotSurface;
+}
+
+godot::Control *WebviewHost::create_internal_control() {
+    if (!uses_internal_surface()) {
+        return nullptr;
+    }
+    if (internal_control == nullptr) {
+        internal_control = backend->create_internal_control();
+        if (internal_control != nullptr) {
+            internal_control->set_visible(false);
+        }
+    }
+    return internal_control;
 }
 
 void WebviewHost::resize_to(godot::Control *owner) {
@@ -71,11 +89,42 @@ void WebviewHost::set_visible(bool visible) {
     if (backend != nullptr) {
         backend->set_visible(visible);
     }
+    if (internal_control != nullptr) {
+        internal_control->set_visible(visible);
+    }
+}
+
+void WebviewHost::process(double delta) {
+    if (backend != nullptr) {
+        backend->process(delta);
+    }
+}
+
+bool WebviewHost::handle_input(const godot::Ref<godot::InputEvent> &event) {
+    if (backend != nullptr) {
+        return backend->handle_input(event);
+    }
+    return false;
+}
+
+void WebviewHost::set_focused(bool focused) {
+    if (backend != nullptr) {
+        backend->set_focused(focused);
+    }
+}
+
+void WebviewHost::notify_mouse_leave() {
+    if (backend != nullptr) {
+        backend->notify_mouse_leave();
+    }
 }
 
 void WebviewHost::stop() {
     if (backend != nullptr) {
         backend->stop();
+    }
+    if (internal_control != nullptr) {
+        internal_control->set_visible(false);
     }
 }
 

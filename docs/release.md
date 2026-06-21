@@ -75,6 +75,7 @@ Inputs:
 ```text
 version: 0.2.9
 promote_latest: true
+linux_cef_runtime_url: <empty unless local/webview-runtimes/linux-cef.json is enabled>
 ```
 
 The `version` input must match `VERSION`.
@@ -83,6 +84,12 @@ The workflow publishes:
 
 - `v<version>`
 - `latest` when `promote_latest` is true
+
+When `local/webview-runtimes/linux-cef.json` has `enabled: true`, the release
+workflow also requires a prebuilt Linux CEF runtime zip. Pass its download URL
+as `linux_cef_runtime_url`; the workflow downloads it, verifies the name and
+SHA-256 from the manifest, and attaches it to both `v<version>` and `latest`.
+Pull request and package-preview workflows do not download or build CEF.
 
 ## Release Assets
 
@@ -125,8 +132,88 @@ Package roles:
 
 The shared addon zip contains every built GDExtension binary referenced by `godot/addons/fennara/fennara.gdextension`. Godot loads the matching library for the user's OS and ignores the others.
 
+Linux CEF webview runtime payloads are separate from the addon archive. The
+runtime manifest lives at `local/webview-runtimes/linux-cef.json`; when it is
+filled with a real archive name or URL and SHA-256, the CLI installs that CEF
+payload once under the user's Fennara app-data directory:
+
+```text
+webview/cef/linux-x64/<cef-version>/
+```
+
+Do not place `libcef.so`, CEF helper executables, CEF resources, or locale packs
+inside `fennara-addon-*`. Normal CI/package-preview jobs should not download or
+rebuild the CEF payload; any future CEF runtime package publishing should be
+manual-only.
+
+Package scripts fail if CEF runtime files are found inside the addon archive.
+The runtime asset name must be:
+
+```text
+fennara-webview-cef-linux-x64-<cef-version>.zip
+```
+
+The zip must extract with required files at its root:
+
+```text
+libcef.so
+fennara_cef_helper
+icudtl.dat
+resources.pak
+chrome_100_percent.pak
+chrome_200_percent.pak
+v8_context_snapshot.bin
+locales/en-US.pak
+```
+
+Optional CEF runtime files such as `chrome-sandbox`, `libEGL.so`,
+`libGLESv2.so`, `libvk_swiftshader.so`, `libvulkan.so.1`,
+`vk_swiftshader_icd.json`, `snapshot_blob.bin`, and additional `locales/*.pak`
+should be included when present in the selected CEF distribution.
+
+To assemble the runtime zip from a maintainer-selected CEF binary tree:
+
+```bash
+node scripts/prepare-linux-cef-runtime.mjs \
+  --cef-root /path/to/cef_binary_<version>_linux64 \
+  --version <cef-version> \
+  --out-dir dist/cef-runtime
+```
+
+On Linux, the script builds `fennara_cef_helper` from
+`scripts/cef/linux/fennara_cef_helper.cpp`. On another OS, build that helper on
+Linux first and pass `--helper /path/to/fennara_cef_helper`. Use `--dry-run` to
+inspect the selected files before writing the zip.
+
+After the script prints the SHA-256, update
+`local/webview-runtimes/linux-cef.json`:
+
+```json
+{
+  "version": "<cef-version>",
+  "enabled": true,
+  "archive": {
+    "format": "zip",
+    "name": "fennara-webview-cef-linux-x64-<cef-version>.zip",
+    "url": null,
+    "sha256": "<sha256>"
+  }
+}
+```
+
+Do not enable the manifest until the exact zip bytes have been produced,
+hashed, attached to the release, and smoke-tested on Linux. If the manifest is
+enabled but the release asset is missing or the SHA-256 does not match, the
+Release workflow and Linux `fennara install` / `fennara update` fail clearly.
+
+The CLI must publish Linux CEF runtime updates atomically: extract and validate
+in a staging directory, write the runtime marker only after required files are
+present, then publish the version directory and update `current.json` with a
+temp-file rename. Running editors keep using the runtime they already loaded.
+
 The CLI embeds the generated project guidance templates from `local/templates/`.
 When release packaging builds the CLI, those templates are compiled into the binary with the rest of the CLI code.
+
 ## What `latest` Means
 
 `latest` is the moving release used by normal install and update flows.

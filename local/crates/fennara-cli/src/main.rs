@@ -6,6 +6,7 @@ mod project_guidance;
 mod project_install;
 mod release_package;
 mod release_update;
+mod webview_runtime;
 
 use std::env;
 

@@ -119,12 +119,19 @@ pub(crate) fn is_allowed_tool(name: &str) -> bool {
     ALLOWED_TOOL_NAMES.contains(&name)
 }
 
-pub(crate) async fn execute(state: &AppState, name: &str, arguments: &Value) -> ExecutedTool {
+pub(crate) async fn execute(
+    state: &AppState,
+    session_id: &str,
+    name: &str,
+    arguments: &Value,
+) -> ExecutedTool {
     if !is_allowed_tool(name) {
         return failed_tool(name, format!("Unsupported plugin chat tool: {name}"));
     }
 
-    let response = godot_bridge::call_tool_value(state, name, arguments.clone()).await;
+    let response =
+        godot_bridge::call_tool_value_for_session(state, Some(session_id), name, arguments.clone())
+            .await;
     let ok = response.get("ok").and_then(Value::as_bool).unwrap_or(false);
     let raw_result = response
         .get("raw_result")

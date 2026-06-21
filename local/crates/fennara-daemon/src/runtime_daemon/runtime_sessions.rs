@@ -89,7 +89,7 @@ async fn runtime_session_start_inner(
                 .is_none()
             {
                 return Err(format!(
-                    "Runtime session already running: {existing_id}. Use runtime_session.status or runtime_session.stop before starting another scene."
+                    "Runtime session already running: {existing_id}. Fennara currently allows one managed runtime session across all connected Godot editors. Use runtime_session.status or runtime_session.stop before starting another scene."
                 ));
             }
         }
@@ -190,6 +190,8 @@ async fn runtime_session_start_inner(
     Ok(json!({
         "ok": true,
         "status": "started",
+        "scope": "global",
+        "scope_note": "Fennara currently allows one managed runtime session across all connected Godot editors.",
         "session_id": session_id,
         "pid": pid,
         "scene_path": request.scene_path,
@@ -215,6 +217,8 @@ async fn runtime_session_status_inner(state: &AppState, session_id: &str) -> Res
         "session_id": session.session_id,
         "scene_path": session.scene_path,
         "running": exit_status.is_none(),
+        "scope": "global",
+        "scope_note": "Fennara currently allows one managed runtime session across all connected Godot editors.",
         "exit_code": exit_status.and_then(|status| status.code()),
         "artifact_dir": session.artifact_dir.to_string_lossy(),
         "command_dir": session.command_dir.to_string_lossy(),
@@ -247,6 +251,7 @@ async fn runtime_session_stop_inner(state: &AppState, session_id: &str) -> Resul
     Ok(json!({
         "ok": true,
         "status": "stopped",
+        "scope": "global",
         "session_id": session_id,
         "exit_code": exit_code,
         "artifact_dir": session.artifact_dir.to_string_lossy(),
@@ -307,6 +312,7 @@ async fn runtime_session_script_inner(
             return Ok(json!({
                 "ok": false,
                 "status": "timeout",
+                "scope": "global",
                 "session_id": request.session_id,
                 "script_run_id": request.script_run_id,
                 "command_path": command_path.to_string_lossy(),
@@ -326,6 +332,7 @@ async fn runtime_session_script_inner(
                     return Ok(json!({
                         "ok": status == "completed",
                         "status": status,
+                        "scope": "global",
                         "session_id": request.session_id,
                         "script_run_id": request.script_run_id,
                         "command_path": command_path.to_string_lossy(),

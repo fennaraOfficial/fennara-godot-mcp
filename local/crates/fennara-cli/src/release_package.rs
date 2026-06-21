@@ -1,4 +1,5 @@
 use crate::app_layout::{AppLayout, arch_name, binary_name, display_path, platform_name};
+use crate::webview_runtime;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -31,24 +32,32 @@ pub fn ensure_package(version_request: &str) -> Result<InstalledPackage, String>
         .clone()
         .ok_or_else(|| format!("could not parse version from {}", local_asset.name))?;
 
-    if package_complete(&layout, &version) {
+    let installed = if package_complete(&layout, &version) {
         write_manifest(&layout, &version)?;
-        return Ok(InstalledPackage {
+        InstalledPackage {
             version: version.clone(),
             addon_dir: addon_dir(&layout, &version),
-        });
+        }
+    } else {
+        let temp_dir = create_temp_dir()?;
+        let result = install_from_assets(
+            &layout,
+            &temp_dir,
+            &version,
+            local_asset.url,
+            addon_asset.url,
+        );
+        let _ = fs::remove_dir_all(&temp_dir);
+        result?
+    };
+
+    if let Some(message) =
+        webview_runtime::ensure_for_current_platform(&layout, Some(&release.assets))?
+    {
+        println!("{message}");
     }
 
-    let temp_dir = create_temp_dir()?;
-    let result = install_from_assets(
-        &layout,
-        &temp_dir,
-        &version,
-        local_asset.url,
-        addon_asset.url,
-    );
-    let _ = fs::remove_dir_all(&temp_dir);
-    result
+    Ok(installed)
 }
 
 fn package_complete(layout: &AppLayout, version: &str) -> bool {

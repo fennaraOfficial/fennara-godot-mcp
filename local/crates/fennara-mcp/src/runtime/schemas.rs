@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 
-const TOOL_GUIDANCE: &str =
-    "Follow the generated Fennara MCP guidelines for Godot workflow rules, and treat this tool schema as the exact contract for this tool.";
+const TOOL_GUIDANCE: &str = "Follow the generated Fennara MCP guidelines for Godot workflow rules, and treat this tool schema as the exact contract for this tool.";
 
 const EMBEDDED_TOOL_DEFINITIONS: &[&str] = &[
     include_str!("../../../../schemas/tools/write_or_update_file.json"),

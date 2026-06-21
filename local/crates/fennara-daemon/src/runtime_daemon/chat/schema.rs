@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
-use std::fs;
+use std::{fs, time::Duration};
 
 use super::settings;
 
@@ -12,6 +12,12 @@ pub(crate) fn connection() -> Result<Connection, String> {
     }
     let conn = Connection::open(&path)
         .map_err(|error| format!("failed to open {}: {error}", path.display()))?;
+    conn.busy_timeout(Duration::from_secs(5))
+        .map_err(to_store_error)?;
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(to_store_error)?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(to_store_error)?;
     conn.pragma_update(None, "foreign_keys", true)
         .map_err(to_store_error)?;
     migrate(&conn)?;

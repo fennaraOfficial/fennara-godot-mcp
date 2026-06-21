@@ -3,6 +3,7 @@ use crate::app_layout::{
     AppLayout, arch_name, binary_name, display_path, platform_name, read_current_manifest,
     resolve_manifest_path,
 };
+use crate::webview_runtime;
 use serde_json::Value;
 use std::path::Path;
 
@@ -29,6 +30,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     report_dir("cache", &layout.cache_dir);
     report_dir("logs", &layout.logs_dir);
     report_dir("tools", &layout.tools_dir);
+    report_dir("webview", &layout.webview_dir);
     report_file("current manifest", &layout.current_manifest_path);
     report_file(
         "fennara-mcp shim",
@@ -56,6 +58,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
         arch_name()
     );
     println!("addon asset hint: fennara-addon-v{VERSION}.zip");
+    webview_runtime::report_for_doctor(&layout, repair)?;
 
     if repair {
         println!("repair: base directories ensured");

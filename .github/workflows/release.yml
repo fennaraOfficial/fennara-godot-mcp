@@ -12,6 +12,11 @@ on:
         required: true
         default: true
         type: boolean
+      linux_cef_runtime_url:
+        description: "Optional prebuilt Linux CEF runtime zip URL to attach when the manifest is enabled."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -214,12 +219,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Download release archives
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           pattern: fennara-release-*
           merge-multiple: true
+
+      - name: Validate optional Linux CEF runtime asset
+        env:
+          LINUX_CEF_RUNTIME_URL: ${{ inputs.linux_cef_runtime_url }}
+        run: node scripts/check-linux-cef-runtime-release.mjs --assets-dir release-assets --download-url "$LINUX_CEF_RUNTIME_URL"
 
       - name: Publish release
         env:

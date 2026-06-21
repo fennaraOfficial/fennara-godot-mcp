@@ -272,6 +272,7 @@ version = "0.2.8"
 dependencies = [
  "json5",
  "serde_json",
+ "sha2",
  "toml_edit",
  "ureq",
  "zip",

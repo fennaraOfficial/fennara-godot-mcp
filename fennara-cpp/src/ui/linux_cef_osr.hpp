@@ -1,26 +1,27 @@
 #pragma once
 
+#ifdef __linux__
+
+#include "linux_cef_runtime.hpp"
+
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/ref.hpp>
+#include <godot_cpp/classes/texture_rect.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include <memory>
 
-namespace fennara {
+namespace fennara::linux_cef_osr {
 
-namespace webview_backend {
-class NativeWebviewBackend;
-}
-
-class WebviewHost {
+class LinuxCefOsrWebview {
 public:
-    WebviewHost();
-    ~WebviewHost();
+    LinuxCefOsrWebview();
+    ~LinuxCefOsrWebview();
 
+    godot::Control *create_control();
     bool start(godot::Control *owner, const godot::String &url);
-    bool uses_internal_surface() const;
-    godot::Control *create_internal_control();
     void resize_to(godot::Control *owner);
     void set_visible(bool visible);
     void process(double delta);
@@ -31,8 +32,15 @@ public:
     bool is_started() const;
 
 private:
-    std::unique_ptr<webview_backend::NativeWebviewBackend> backend;
-    godot::Control *internal_control = nullptr;
+    struct CefObjects;
+
+    godot::TextureRect *texture_rect = nullptr;
+    godot::Ref<godot::ImageTexture> texture;
+    std::unique_ptr<CefObjects> cef;
+    bool started = false;
+    bool focused = false;
 };
 
-} // namespace fennara
+} // namespace fennara::linux_cef_osr
+
+#endif

@@ -7,7 +7,11 @@
 namespace fennara::app_paths {
 
 godot::PackedStringArray app_dir_candidates();
+godot::PackedStringArray webview_dir_candidates();
 godot::String app_dir();
+godot::String webview_dir();
+godot::String webview_profile_dir();
+godot::String webview_log_dir();
 godot::String csharp_ls_binary_path();
 godot::String daemon_binary_path();
 godot::String docs_cache_dir();

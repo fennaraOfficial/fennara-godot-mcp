@@ -10,6 +10,7 @@ pub struct AppLayout {
     pub cache_dir: PathBuf,
     pub logs_dir: PathBuf,
     pub tools_dir: PathBuf,
+    pub webview_dir: PathBuf,
     pub current_manifest_path: PathBuf,
 }
 
@@ -22,6 +23,7 @@ impl AppLayout {
             cache_dir: app_dir.join("cache"),
             logs_dir: app_dir.join("logs"),
             tools_dir: app_dir.join("tools"),
+            webview_dir: app_dir.join("webview"),
             current_manifest_path: app_dir.join("current.json"),
             app_dir,
         })
@@ -35,11 +37,27 @@ impl AppLayout {
             &self.cache_dir,
             &self.logs_dir,
             &self.tools_dir,
+            &self.webview_dir,
         ] {
             fs::create_dir_all(dir)
                 .map_err(|err| format!("failed to create {}: {err}", display_path(dir)))?;
         }
         Ok(())
+    }
+
+    pub fn linux_cef_runtime_dir(&self, platform_arch: &str, version: &str) -> PathBuf {
+        self.webview_dir
+            .join("cef")
+            .join(platform_arch)
+            .join(version)
+    }
+
+    pub fn webview_profile_root(&self) -> PathBuf {
+        self.cache_dir.join("webview").join("profiles")
+    }
+
+    pub fn webview_log_root(&self) -> PathBuf {
+        self.logs_dir.join("webview")
     }
 }
 

@@ -2,6 +2,22 @@ name: Package Preview
 
 on:
   workflow_dispatch:
+    inputs:
+      linux_cef_runtime_url:
+        description: "Optional prebuilt Linux CEF runtime zip URL to upload for testing."
+        required: false
+        default: ""
+        type: string
+      linux_cef_runtime_name:
+        description: "Optional output file name for the Linux CEF runtime zip."
+        required: false
+        default: ""
+        type: string
+      linux_cef_runtime_sha256:
+        description: "Optional SHA-256 for the Linux CEF runtime zip."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -132,6 +148,55 @@ jobs:
         with:
           name: fennara-package-preview-${{ matrix.platform }}-${{ matrix.arch }}
           path: dist/*.zip
+          if-no-files-found: error
+
+      - name: Download Linux CEF runtime preview asset
+        if: matrix.platform == 'linux' && inputs.linux_cef_runtime_url != ''
+        shell: bash
+        env:
+          LINUX_CEF_RUNTIME_URL: ${{ inputs.linux_cef_runtime_url }}
+          LINUX_CEF_RUNTIME_NAME: ${{ inputs.linux_cef_runtime_name }}
+          LINUX_CEF_RUNTIME_SHA256: ${{ inputs.linux_cef_runtime_sha256 }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist/linux-cef-runtime-preview
+
+          asset_name="${LINUX_CEF_RUNTIME_NAME}"
+          if [[ -z "${asset_name}" ]]; then
+            url_path="${LINUX_CEF_RUNTIME_URL%%\?*}"
+            asset_name="$(basename "${url_path}")"
+          fi
+
+          if [[ -z "${asset_name}" || "${asset_name}" == "." || "${asset_name}" == "/" || "${asset_name}" == *"/"* || "${asset_name}" == *"\\"* ]]; then
+            echo "::error::linux_cef_runtime_name must be a file name, or linux_cef_runtime_url must end with a file name."
+            exit 1
+          fi
+
+          if [[ ! "${asset_name}" =~ ^fennara-webview-cef-linux-x64-.+\.zip$ ]]; then
+            echo "::error::Linux CEF runtime file must match fennara-webview-cef-linux-x64-<version>.zip."
+            exit 1
+          fi
+
+          target="dist/linux-cef-runtime-preview/${asset_name}"
+          curl --location --fail --show-error --retry 3 --output "${target}" "${LINUX_CEF_RUNTIME_URL}"
+
+          if [[ -n "${LINUX_CEF_RUNTIME_SHA256}" ]]; then
+            actual_sha256="$(sha256sum "${target}" | awk '{print $1}')"
+            if [[ "${actual_sha256,,}" != "${LINUX_CEF_RUNTIME_SHA256,,}" ]]; then
+              echo "::error::Linux CEF runtime sha256 mismatch: expected ${LINUX_CEF_RUNTIME_SHA256}, got ${actual_sha256}."
+              exit 1
+            fi
+          fi
+
+          echo "Downloaded Linux CEF runtime preview asset: ${asset_name}"
+
+      - name: Upload Linux CEF runtime preview asset
+        if: matrix.platform == 'linux' && inputs.linux_cef_runtime_url != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: fennara-package-preview-linux-cef-runtime
+          path: dist/linux-cef-runtime-preview/*.zip
           if-no-files-found: error
 
       - name: Upload addon part

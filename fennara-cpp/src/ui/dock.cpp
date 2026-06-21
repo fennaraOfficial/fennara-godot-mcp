@@ -5,6 +5,8 @@
 #include "fennara/ui/webview_host.hpp"
 
 #include <godot_cpp/classes/margin_container.hpp>
+#include <godot_cpp/classes/input_event_mouse_button.hpp>
+#include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
@@ -45,6 +47,7 @@ FennaraDock::FennaraDock() {
     set_h_size_flags(godot::Control::SIZE_EXPAND_FILL);
     set_custom_minimum_size(godot::Vector2(420, 520));
     set_clip_contents(true);
+    set_focus_mode(godot::Control::FOCUS_ALL);
     webview_host = std::make_unique<WebviewHost>();
 }
 
@@ -83,6 +86,9 @@ void FennaraDock::_process(double delta) {
         }
     }
     _sync_webview_bounds();
+    if (webview_host) {
+        webview_host->process(delta);
+    }
 }
 
 void FennaraDock::_notification(int what) {
@@ -96,6 +102,16 @@ void FennaraDock::_notification(int what) {
         case NOTIFICATION_THEME_CHANGED:
             _sync_webview_bounds();
             break;
+        case NOTIFICATION_FOCUS_ENTER:
+            webview_host->set_focused(true);
+            break;
+        case NOTIFICATION_FOCUS_EXIT:
+            webview_host->set_focused(false);
+            break;
+        case NOTIFICATION_MOUSE_EXIT:
+        case NOTIFICATION_MOUSE_EXIT_SELF:
+            webview_host->notify_mouse_leave();
+            break;
         default:
             break;
     }
@@ -108,9 +124,11 @@ void FennaraDock::_sync_webview_bounds() {
 
     if (!is_visible_in_tree()) {
         webview_host->set_visible(false);
+        webview_host->set_focused(false);
         return;
     }
 
+    webview_host->set_visible(true);
     webview_host->resize_to(webview_region ? webview_region : this);
 }
 
@@ -120,6 +138,7 @@ void FennaraDock::_build_ui() {
     root->set_h_size_flags(godot::Control::SIZE_EXPAND_FILL);
     root->set_v_size_flags(godot::Control::SIZE_EXPAND_FILL);
     root->set_custom_minimum_size(godot::Vector2(420, 520));
+    root->set_mouse_filter(godot::Control::MOUSE_FILTER_PASS);
     add_child(root);
 
     godot::MarginContainer *margin = memnew(godot::MarginContainer);
@@ -127,6 +146,7 @@ void FennaraDock::_build_ui() {
     margin->set_h_size_flags(godot::Control::SIZE_EXPAND_FILL);
     margin->set_v_size_flags(godot::Control::SIZE_EXPAND_FILL);
     margin->set_custom_minimum_size(godot::Vector2(420, 520));
+    margin->set_mouse_filter(godot::Control::MOUSE_FILTER_PASS);
     margin->add_theme_constant_override("margin_left", 0);
     margin->add_theme_constant_override("margin_top", 0);
     margin->add_theme_constant_override("margin_right", 0);
@@ -137,6 +157,18 @@ void FennaraDock::_build_ui() {
     fallback_label = make_fallback_label("Starting Fennara chat...");
     fallback_label->set_anchors_preset(godot::Control::PRESET_FULL_RECT);
     margin->add_child(fallback_label);
+
+    if (webview_host && webview_host->uses_internal_surface()) {
+        internal_webview_surface = webview_host->create_internal_control();
+        if (internal_webview_surface != nullptr) {
+            internal_webview_surface->set_anchors_preset(godot::Control::PRESET_FULL_RECT);
+            internal_webview_surface->set_h_size_flags(godot::Control::SIZE_EXPAND_FILL);
+            internal_webview_surface->set_v_size_flags(godot::Control::SIZE_EXPAND_FILL);
+            internal_webview_surface->set_mouse_filter(godot::Control::MOUSE_FILTER_PASS);
+            margin->add_child(internal_webview_surface);
+            margin->move_child(fallback_label, margin->get_child_count() - 1);
+        }
+    }
 }
 
 void FennaraDock::_try_start_webview() {
@@ -185,12 +217,18 @@ void FennaraDock::_try_start_webview() {
     godot::String url = _chat_url();
     _output_log("Web chat starting url=" + url);
     if (!webview_host->start(owner, url)) {
+        if (internal_webview_surface) {
+            internal_webview_surface->set_visible(false);
+        }
         if (fallback_label) {
             fallback_label->set_text("Fennara chat could not start. Check the Godot Output panel for details.");
         }
         return;
     }
 
+    if (internal_webview_surface) {
+        internal_webview_surface->set_visible(true);
+    }
     if (fallback_label) {
         fallback_label->set_visible(false);
     }
@@ -254,6 +292,20 @@ bool FennaraDock::_webview_region_is_stable() {
 void FennaraDock::_output_log(const godot::String &message) const {
     FLOG_UI(message);
     godot::UtilityFunctions::print(godot::String("[Fennara] ") + message);
+}
+
+void FennaraDock::_gui_input(const godot::Ref<godot::InputEvent> &event) {
+    if (webview_host && webview_host->uses_internal_surface() && webview_host->is_started()) {
+        if (auto *button = godot::Object::cast_to<godot::InputEventMouseButton>(event.ptr())) {
+            if (button->is_pressed()) {
+                grab_focus();
+                webview_host->set_focused(true);
+            }
+        }
+        if (webview_host->handle_input(event)) {
+            accept_event();
+        }
+    }
 }
 
 } // namespace fennara

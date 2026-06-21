@@ -29,6 +29,33 @@ MCP client
 | GDExtension | `fennara-cpp/` | Godot-facing tools, dock UI, diagnostics, validation, runtime capture, and editor integration. |
 | Tool schemas | `local/schemas/tools/` | MCP tool descriptions exposed to clients. |
 
+## In-Editor Chat Webview
+
+The optional chat dock is hosted by the GDExtension UI layer. The shared host
+contract separates two browser surface styles:
+
+| Platform Path | Behavior |
+| --- | --- |
+| Windows | Native WebView2 child/overlay attached to the Godot editor window. |
+| macOS | Native WKWebView attached to the Godot editor window. |
+| Linux | CEF off-screen rendering into an internal Godot `TextureRect`, using a shared CEF runtime from Fennara app data. |
+
+The Linux path renders browser pixels inside a Godot `Control` and routes the
+CEF message loop through the dock process hook. The GDExtension discovers the
+shared CEF runtime, validates its `fennara-cef-runtime.json` marker and
+required files, dynamically opens `libcef.so`, initializes CEF in windowless
+mode, creates a browser for the packaged chat URL, and copies paint buffers into
+a Godot texture. Full mouse, keyboard, IME, clipboard, and cursor handling are
+separate follow-up work. The CEF runtime is intentionally separate from the
+Godot addon zip: Linux installs reserve a shared app-data runtime location and
+will install CEF there once the runtime asset is selected.
+
+Multiple Godot editors may be open at the same time. Each embedded chat
+websocket is accepted with the owning editor's `chat_token` and remains bound to
+that Godot session for chat storage scope, snapshots, tool execution, cancel,
+and revert. External MCP clients still route through the daemon's active target.
+OpenRouter settings are global for now, while chats remain project-scoped.
+
 ## Install Layout
 
 The install script only installs the CLI and adds it to `PATH`.
@@ -50,9 +77,19 @@ Fennara/
       addon/
         addons/
           fennara/
+  webview/
+    cef/
+      linux-x64/
+        <cef-version>/
 ```
 
 On Windows, executables use `.exe`.
+
+The `webview/cef/...` directory is for read-only browser engine payloads shared
+by every Godot project/editor using that Fennara install. Per-process writable
+CEF profile, cache, and log data must stay outside that shared runtime payload
+under `cache/webview/profiles/cef/godot-<pid>-<timestamp>-<nonce>/` and
+`logs/webview/cef/godot-<pid>-<timestamp>-<nonce>/`.
 
 Default platform locations:
 
@@ -147,6 +184,11 @@ If an MCP app is currently running a launcher, the update may keep that launcher
 and continue. The versioned runtime package is still updated, and future starts
 use the version from `current.json`.
 
+The daemon currently allows one managed `runtime_session` scene globally across
+all connected Godot editors. A start request runs in the selected or
+chat-bound Godot project, but another running managed scene must be stopped
+before starting a new one.
+
 ## Release Assets
 
 Each public release publishes separate assets so installs can stay modular:
@@ -159,6 +201,16 @@ Each public release publishes separate assets so installs can stay modular:
 
 The moving `latest` release is what normal users should install from. Versioned
 releases such as `v0.2.8` stay available for pinning and debugging.
+
+Linux CEF runtime payloads are not part of `fennara-addon-*`. They are selected
+by `local/webview-runtimes/linux-cef.json` and installed once into the shared
+app-data `webview/cef/linux-x64/<cef-version>/` directory when the manifest has
+a real archive name or URL and checksum.
+
+CEF runtime installs stage into a temporary sibling directory, validate required
+files and the runtime marker, then publish the completed version directory and
+atomically update `current.json`. Existing editor processes keep using the
+already-loaded runtime.
 
 ## Design Rules
 

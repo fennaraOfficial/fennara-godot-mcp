@@ -107,11 +107,24 @@ Fennara/
       addon/
         addons/
           fennara/
+  webview/
+    cef/
+      linux-x64/
+        <cef-version>/
 ```
 
 On Windows, the binaries use `.exe`.
 
 `current.json` points the launcher binaries to the active runtime version. The normal `fennara install` and `fennara update` commands create this file automatically.
+
+Linux embedded chat uses the shared `webview/cef/linux-x64/<cef-version>/`
+runtime location when the CEF asset is installed. Keep that payload outside the
+Godot project addon; `addons/fennara` should not contain `libcef.so` or other
+CEF runtime files.
+
+Do not put writable browser state inside the CEF version directory. Normal use
+writes per-editor profiles and logs under the Fennara app-data cache/log roots,
+while the runtime payload remains shared and read-only.
 
 ## 5. Configure Your MCP App
 
