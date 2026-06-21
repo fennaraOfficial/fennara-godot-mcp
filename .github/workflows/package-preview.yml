@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       linux_cef_runtime_url:
-        description: "Optional prebuilt Linux CEF runtime zip URL to upload for testing."
+        description: "Optional CEF tarball or prebuilt Fennara CEF runtime zip URL. Blank downloads the latest stable official Linux CEF."
         required: false
         default: ""
         type: string
       linux_cef_runtime_name:
-        description: "Optional output file name for the Linux CEF runtime zip."
+        description: "Optional output file name when linux_cef_runtime_url points to a prebuilt Fennara CEF runtime zip."
         required: false
         default: ""
         type: string
       linux_cef_runtime_sha256:
-        description: "Optional SHA-256 for the Linux CEF runtime zip."
+        description: "Optional SHA-256 for the downloaded CEF tarball or prebuilt runtime zip."
         required: false
         default: ""
         type: string
@@ -66,7 +66,7 @@ jobs:
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config
+        run: sudo apt-get update && sudo apt-get install -y build-essential bzip2 pkg-config
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -150,8 +150,8 @@ jobs:
           path: dist/*.zip
           if-no-files-found: error
 
-      - name: Download Linux CEF runtime preview asset
-        if: matrix.platform == 'linux' && inputs.linux_cef_runtime_url != ''
+      - name: Build Linux CEF runtime preview asset
+        if: matrix.platform == 'linux'
         shell: bash
         env:
           LINUX_CEF_RUNTIME_URL: ${{ inputs.linux_cef_runtime_url }}
@@ -160,39 +160,90 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p dist/linux-cef-runtime-preview
+          mkdir -p .package-preview/cef-download .package-preview/cef-source dist/linux-cef-runtime-preview
 
-          asset_name="${LINUX_CEF_RUNTIME_NAME}"
-          if [[ -z "${asset_name}" ]]; then
-            url_path="${LINUX_CEF_RUNTIME_URL%%\?*}"
-            asset_name="$(basename "${url_path}")"
+          download_url="${LINUX_CEF_RUNTIME_URL}"
+          download_name=""
+          cef_version=""
+
+          if [[ -z "${download_url}" ]]; then
+            node --input-type=module <<'NODE' > .package-preview/cef-download/selected.env
+          const response = await fetch("https://cef-builds.spotifycdn.com/index.json");
+          if (!response.ok) {
+            throw new Error(`failed to fetch CEF index: HTTP ${response.status}`);
+          }
+          const index = await response.json();
+          const versions = index.linux64?.versions ?? [];
+          const selected = versions.find((version) =>
+            version.channel === "stable" && version.files?.some((file) => file.type === "standard")
+          );
+          if (!selected) {
+            throw new Error("could not find a stable Linux x64 standard CEF build");
+          }
+          const file = selected.files.find((candidate) => candidate.type === "standard");
+          console.log(`CEF_VERSION=${selected.cef_version}`);
+          console.log(`CEF_ARCHIVE_NAME=${file.name}`);
+          console.log(`CEF_DOWNLOAD_URL=https://cef-builds.spotifycdn.com/${file.name}`);
+          NODE
+            source .package-preview/cef-download/selected.env
+            download_url="${CEF_DOWNLOAD_URL}"
+            download_name="${CEF_ARCHIVE_NAME}"
+            cef_version="${CEF_VERSION}"
+          else
+            url_path="${download_url%%\?*}"
+            download_name="$(basename "${url_path}")"
           fi
 
-          if [[ -z "${asset_name}" || "${asset_name}" == "." || "${asset_name}" == "/" || "${asset_name}" == *"/"* || "${asset_name}" == *"\\"* ]]; then
-            echo "::error::linux_cef_runtime_name must be a file name, or linux_cef_runtime_url must end with a file name."
+          if [[ -z "${download_name}" || "${download_name}" == "." || "${download_name}" == "/" || "${download_name}" == *"/"* || "${download_name}" == *"\\"* ]]; then
+            echo "::error::linux_cef_runtime_url must end with a file name when provided."
             exit 1
           fi
 
-          if [[ ! "${asset_name}" =~ ^fennara-webview-cef-linux-x64-.+\.zip$ ]]; then
-            echo "::error::Linux CEF runtime file must match fennara-webview-cef-linux-x64-<version>.zip."
-            exit 1
-          fi
-
-          target="dist/linux-cef-runtime-preview/${asset_name}"
-          curl --location --fail --show-error --retry 3 --output "${target}" "${LINUX_CEF_RUNTIME_URL}"
+          download_path=".package-preview/cef-download/${download_name}"
+          curl --location --fail --show-error --retry 3 --output "${download_path}" "${download_url}"
 
           if [[ -n "${LINUX_CEF_RUNTIME_SHA256}" ]]; then
-            actual_sha256="$(sha256sum "${target}" | awk '{print $1}')"
+            actual_sha256="$(sha256sum "${download_path}" | awk '{print $1}')"
             if [[ "${actual_sha256,,}" != "${LINUX_CEF_RUNTIME_SHA256,,}" ]]; then
-              echo "::error::Linux CEF runtime sha256 mismatch: expected ${LINUX_CEF_RUNTIME_SHA256}, got ${actual_sha256}."
+              echo "::error::Linux CEF download sha256 mismatch: expected ${LINUX_CEF_RUNTIME_SHA256}, got ${actual_sha256}."
               exit 1
             fi
           fi
 
-          echo "Downloaded Linux CEF runtime preview asset: ${asset_name}"
+          if [[ "${download_name}" =~ ^fennara-webview-cef-linux-x64-.+\.zip$ ]]; then
+            asset_name="${LINUX_CEF_RUNTIME_NAME:-${download_name}}"
+            if [[ "${asset_name}" != "${download_name}" && ! "${asset_name}" =~ ^fennara-webview-cef-linux-x64-.+\.zip$ ]]; then
+              echo "::error::linux_cef_runtime_name must match fennara-webview-cef-linux-x64-<version>.zip."
+              exit 1
+            fi
+            cp "${download_path}" "dist/linux-cef-runtime-preview/${asset_name}"
+            echo "Uploaded prebuilt Linux CEF runtime preview asset: ${asset_name}"
+            exit 0
+          fi
+
+          if [[ ! "${download_name}" =~ ^cef_binary_(.+)_linux64\.tar\.bz2$ ]]; then
+            echo "::error::Linux CEF input must be an official cef_binary_<version>_linux64.tar.bz2 or fennara-webview-cef-linux-x64-<version>.zip."
+            exit 1
+          fi
+
+          if [[ -z "${cef_version}" ]]; then
+            cef_version="${BASH_REMATCH[1]}"
+          fi
+
+          tar -xjf "${download_path}" -C .package-preview/cef-source
+          cef_root="$(find .package-preview/cef-source -maxdepth 1 -type d -name 'cef_binary_*_linux64' | head -n 1)"
+          if [[ -z "${cef_root}" ]]; then
+            echo "::error::Could not find extracted cef_binary_*_linux64 directory."
+            exit 1
+          fi
+
+          node scripts/prepare-linux-cef-runtime.mjs \
+            --cef-root "${cef_root}" \
+            --version "${cef_version}" \
+            --out-dir dist/linux-cef-runtime-preview
 
       - name: Upload Linux CEF runtime preview asset
-        if: matrix.platform == 'linux' && inputs.linux_cef_runtime_url != ''
+        if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
         with:
           name: fennara-package-preview-linux-cef-runtime
