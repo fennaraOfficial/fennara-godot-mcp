@@ -71,7 +71,10 @@ jobs:
       - name: Prepare Linux CEF SDK
         if: matrix.platform == 'linux'
         id: linux_cef_sdk
-        run: node scripts/prepare-linux-cef-sdk.mjs
+        run: |
+          node scripts/prepare-linux-cef-sdk.mjs \
+            --out-dir "${RUNNER_TEMP}/fennara-cef-sdk" \
+            --download-dir "${RUNNER_TEMP}/fennara-cef-download"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
