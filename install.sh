@@ -119,7 +119,7 @@ release_json="$tmp_dir/release.json"
 curl -fsSL -H "User-Agent: fennara-install" "$release_api" -o "$release_json"
 
 asset_url="$(
-  sed -nE 's/.*"browser_download_url": "([^"]*fennara-cli-'"$platform"'-'"$arch"'-v[^"]*\.zip)".*/\1/p' "$release_json" |
+  sed -nE 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"([^"]*fennara-cli-'"$platform"'-'"$arch"'-v[^"]*\.zip)".*/\1/p' "$release_json" |
     head -n 1
 )"
 
