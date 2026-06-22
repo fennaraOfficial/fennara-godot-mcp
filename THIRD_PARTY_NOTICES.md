@@ -26,6 +26,17 @@ Project: https://github.com/cure53/DOMPurify
 
 DOMPurify is distributed under the Mozilla Public License 2.0 or Apache License 2.0. See the upstream project for full license text.
 
+## Chromium Embedded Framework
+
+The Linux in-editor chat webview compiles against official Chromium Embedded
+Framework 139 headers vendored under `fennara-cpp/vendor/cef/`. CEF runtime
+binaries are not bundled in the addon and are distributed separately as a
+shared app-data webview runtime.
+
+Project: https://bitbucket.org/chromiumembedded/cef
+
+CEF is distributed under a BSD-style license. See `fennara-cpp/vendor/cef/LICENSE.txt`.
+
 ## ripgrep
 
 The Windows preview addon payload includes `rg.exe`, the ripgrep command-line search tool.

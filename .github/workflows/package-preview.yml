@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       linux_cef_runtime_url:
-        description: "Optional CEF tarball or prebuilt Fennara CEF runtime zip URL. Blank downloads the latest stable official Linux CEF."
+        description: "Optional CEF tarball or prebuilt Fennara CEF runtime zip URL. Blank downloads the pinned official CEF 139 Linux minimal archive."
         required: false
         default: ""
         type: string
@@ -167,35 +167,15 @@ jobs:
           cef_version=""
 
           if [[ -z "${download_url}" ]]; then
-            node --input-type=module <<'NODE' > .package-preview/cef-download/selected.env
-          const response = await fetch("https://cef-builds.spotifycdn.com/index.json");
-          if (!response.ok) {
-            throw new Error(`failed to fetch CEF index: HTTP ${response.status}`);
-          }
-          const index = await response.json();
-          const versions = index.linux64?.versions ?? [];
-          const selected = versions.find((version) => {
-            const chromiumMajor = Number.parseInt(version.chromium_version?.split(".")[0] ?? "0", 10);
-            return version.channel === "stable" &&
-              chromiumMajor > 0 &&
-              chromiumMajor <= 119 &&
-              version.files?.some((file) => file.type === "standard");
-          });
-          if (!selected) {
-            throw new Error("could not find a stable Linux x64 standard CEF build at Chromium 119 or older");
-          }
-          const file = selected.files.find((candidate) => candidate.type === "standard");
-          console.log(`CEF_VERSION=${selected.cef_version}`);
-          console.log(`CEF_ARCHIVE_NAME=${file.name}`);
-          console.log(`CEF_DOWNLOAD_URL=https://cef-builds.spotifycdn.com/${file.name}`);
-          NODE
-            source .package-preview/cef-download/selected.env
-            download_url="${CEF_DOWNLOAD_URL}"
-            download_name="${CEF_ARCHIVE_NAME}"
-            cef_version="${CEF_VERSION}"
+            cef_version="139.0.28+g55ab8a8+chromium-139.0.7258.139"
+            download_name="cef_binary_${cef_version}_linux64_minimal.tar.bz2"
+            encoded_download_name="${download_name//+/%2B}"
+            download_url="https://cef-builds.spotifycdn.com/${encoded_download_name}"
           else
             url_path="${download_url%%\?*}"
             download_name="$(basename "${url_path}")"
+            download_name="${download_name//%2B/+}"
+            download_name="${download_name//%2b/+}"
           fi
 
           if [[ -z "${download_name}" || "${download_name}" == "." || "${download_name}" == "/" || "${download_name}" == *"/"* || "${download_name}" == *"\\"* ]]; then
@@ -225,8 +205,8 @@ jobs:
             exit 0
           fi
 
-          if [[ ! "${download_name}" =~ ^cef_binary_(.+)_linux64\.tar\.bz2$ ]]; then
-            echo "::error::Linux CEF input must be an official cef_binary_<version>_linux64.tar.bz2 or fennara-webview-cef-linux-x64-<version>.zip."
+          if [[ ! "${download_name}" =~ ^cef_binary_(.+)_linux64(_minimal)?\.tar\.bz2$ ]]; then
+            echo "::error::Linux CEF input must be an official cef_binary_<version>_linux64[_minimal].tar.bz2 or fennara-webview-cef-linux-x64-<version>.zip."
             exit 1
           fi
 
@@ -235,9 +215,9 @@ jobs:
           fi
 
           tar -xjf "${download_path}" -C .package-preview/cef-source
-          cef_root="$(find .package-preview/cef-source -maxdepth 1 -type d -name 'cef_binary_*_linux64' | head -n 1)"
+          cef_root="$(find .package-preview/cef-source -maxdepth 1 -type d \( -name 'cef_binary_*_linux64' -o -name 'cef_binary_*_linux64_minimal' \) | head -n 1)"
           if [[ -z "${cef_root}" ]]; then
-            echo "::error::Could not find extracted cef_binary_*_linux64 directory."
+            echo "::error::Could not find extracted cef_binary_*_linux64 or cef_binary_*_linux64_minimal directory."
             exit 1
           fi
 

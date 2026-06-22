@@ -5,12 +5,9 @@
 #include <iostream>
 #include <string>
 
-struct cef_main_args_t {
-    int argc = 0;
-    char **argv = nullptr;
-};
+#include <include/capi/cef_app_capi.h>
 
-using cef_execute_process_t = int (*)(const cef_main_args_t *, void *, void *);
+using cef_execute_process_t = decltype(&::cef_execute_process);
 
 int main(int argc, char **argv) {
     const std::filesystem::path executable =
@@ -37,7 +34,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    cef_main_args_t args;
+    cef_main_args_t args{};
     args.argc = argc;
     args.argv = argv;
     const int exit_code = execute_process(&args, nullptr, nullptr);

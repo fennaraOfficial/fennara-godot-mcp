@@ -26,7 +26,7 @@ namespace fennara::linux_cef_osr {
 namespace {
 
 using namespace fennara::linux_cef_runtime;
-using namespace fennara::linux_cef_runtime::capi;
+using fennara::linux_cef_runtime::capi::cef_api_t;
 
 constexpr int kMinimumDimension = 1;
 
@@ -100,7 +100,7 @@ int base_has_at_least_one_ref(cef_base_ref_counted_t *base) {
 }
 
 cef_base_ref_counted_t make_base(size_t size) {
-    cef_base_ref_counted_t base;
+    cef_base_ref_counted_t base{};
     base.size = size;
     base.add_ref = base_add_ref;
     base.release = base_release;
@@ -113,7 +113,7 @@ cef_base_ref_counted_t make_base(size_t size) {
 
 struct LinuxCefOsrWebview::CefObjects {
     struct RenderHandler {
-        cef_render_handler_t handler;
+        cef_render_handler_t handler{};
         std::mutex mutex;
         std::vector<uint8_t> rgba;
         int width = 1;
@@ -200,7 +200,7 @@ struct LinuxCefOsrWebview::CefObjects {
     };
 
     struct Client {
-        cef_client_t client;
+        cef_client_t client{};
         RenderHandler *render_handler = nullptr;
 
         explicit Client(RenderHandler *handler) :
@@ -307,7 +307,8 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     ensure_dir(log_dir);
 
     const cef_api_t &api = cef->api();
-    cef_settings_t settings;
+    cef_settings_t settings{};
+    settings.size = sizeof(settings);
     settings.no_sandbox = 1;
     settings.windowless_rendering_enabled = 1;
     settings.disable_signal_handlers = 1;
@@ -350,13 +351,15 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     cef->height = clamp_dimension(size.y);
     cef->render_handler.set_size(cef->width, cef->height);
 
-    cef_window_info_t window_info;
+    cef_window_info_t window_info{};
+    window_info.size = sizeof(window_info);
     window_info.bounds.width = cef->width;
     window_info.bounds.height = cef->height;
     window_info.windowless_rendering_enabled = 1;
     window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 
-    cef_browser_settings_t browser_settings;
+    cef_browser_settings_t browser_settings{};
+    browser_settings.size = sizeof(browser_settings);
     browser_settings.windowless_frame_rate = 30;
     browser_settings.background_color = 0xffffffff;
 

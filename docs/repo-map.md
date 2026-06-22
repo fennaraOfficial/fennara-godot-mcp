@@ -42,9 +42,10 @@ This is the quick map for contributors and coding agents working in this reposit
 | `fennara-cpp/SConstruct` | GDExtension build entrypoint. |
 | `fennara-cpp/include/` | Public C++ headers. |
 | `fennara-cpp/src/` | C++ implementation. |
+| `fennara-cpp/vendor/cef/` | Official CEF 139 header snapshot used by the Linux OSR bridge. Runtime binaries stay outside the addon. |
 | `fennara-cpp/src/ui/webview_host*` | Native in-editor chat webview host and platform backends. |
 | `fennara-cpp/src/ui/linux_cef_runtime.*` | Linux-only shared CEF runtime discovery, marker validation, and dynamic `libcef.so` loader foundation. |
-| `fennara-cpp/src/ui/linux_cef_osr.*` / `linux_cef_input.*` / `linux_cef_capi.hpp` | Linux-only CEF off-screen rendering surface, Godot input forwarding, minimal C API shim, and Godot texture updates for the internal chat webview. |
+| `fennara-cpp/src/ui/linux_cef_osr.*` / `linux_cef_input.*` / `linux_cef_capi.hpp` | Linux-only CEF off-screen rendering surface, Godot input forwarding, official-header dynamic CEF API table, and Godot texture updates for the internal chat webview. |
 | `fennara-cpp/src/tools/` | Godot-facing tool implementations. |
 | `fennara-cpp/src/lsp/` | Script diagnostics and language-server helpers. |
 | `fennara-cpp/src/runtime/` | Runtime capture/session support used by runtime tools. |

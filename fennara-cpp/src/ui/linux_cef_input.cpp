@@ -15,8 +15,6 @@
 namespace fennara::linux_cef_osr::input {
 namespace {
 
-using namespace fennara::linux_cef_runtime::capi;
-
 int clamp_coordinate(double value, int limit) {
     const int max_value = std::max(0, limit - 1);
     return std::clamp(static_cast<int>(std::lround(value)), 0, max_value);
@@ -271,7 +269,8 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
             return false;
         }
 
-        cef_key_event_t key_event;
+        cef_key_event_t key_event{};
+        key_event.size = sizeof(key_event);
         key_event.type = key->is_pressed() ? KEYEVENT_RAWKEYDOWN : KEYEVENT_KEYUP;
         key_event.modifiers = modifier_flags(key);
         if (key->is_echo()) {

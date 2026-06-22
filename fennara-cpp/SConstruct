@@ -15,6 +15,7 @@ elif env["platform"] == "macos":
     env.Append(LINKFLAGS=["-framework", "Cocoa", "-framework", "WebKit"])
     env.Append(LIBS=["dl"])
 elif env["platform"] == "linux":
+    env.Append(CPPPATH=["vendor/cef"])
     env.Append(LIBS=["dl"])
 
 # Auto-discover include directories

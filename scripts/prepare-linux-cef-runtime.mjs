@@ -128,7 +128,16 @@ function buildHelper(target) {
     throw new Error("Building fennara_cef_helper requires Linux; pass --helper <path> for a prebuilt helper.");
   }
   const source = path.join(root, "scripts", "cef", "linux", "fennara_cef_helper.cpp");
-  run("c++", ["-std=c++17", "-O2", source, "-Wl,-rpath,$ORIGIN", "-ldl", "-o", target]);
+  run("c++", [
+    "-std=c++17",
+    "-O2",
+    `-I${path.join(root, "fennara-cpp", "vendor", "cef")}`,
+    source,
+    "-Wl,-rpath,$ORIGIN",
+    "-ldl",
+    "-o",
+    target,
+  ]);
   chmodSync(target, 0o755);
 }
 
@@ -250,7 +259,8 @@ Usage:
   node scripts/prepare-linux-cef-runtime.mjs --cef-root <cef_binary_dir> --version <cef-version> [--out-dir <dir>]
   node scripts/prepare-linux-cef-runtime.mjs --cef-root <cef_binary_dir> --version <cef-version> --helper <fennara_cef_helper> [--dry-run]
 
-The CEF directory may be an official cef_binary_* tree with Release/ and Resources/
-subdirectories, or a flat directory containing the required runtime files.
+The CEF directory may be an official cef_binary_*_linux64 or
+cef_binary_*_linux64_minimal tree with Release/ and Resources/ subdirectories,
+or a flat directory containing the required runtime files.
 `);
 }

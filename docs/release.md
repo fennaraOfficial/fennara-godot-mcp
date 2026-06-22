@@ -89,7 +89,10 @@ When `local/webview-runtimes/linux-cef.json` has `enabled: true`, the release
 workflow also requires a prebuilt Linux CEF runtime zip. Pass its download URL
 as `linux_cef_runtime_url`; the workflow downloads it, verifies the name and
 SHA-256 from the manifest, and attaches it to both `v<version>` and `latest`.
-Pull request and package-preview workflows do not download or build CEF.
+Pull request workflows do not publish CEF. The Package Preview workflow creates
+a separate test-only Linux CEF runtime artifact from the pinned official CEF 139
+Linux minimal archive unless `linux_cef_runtime_url` points to another official
+CEF tarball or a prebuilt Fennara CEF runtime zip.
 
 ## Release Assets
 
@@ -142,9 +145,9 @@ webview/cef/linux-x64/<cef-version>/
 ```
 
 Do not place `libcef.so`, CEF helper executables, CEF resources, or locale packs
-inside `fennara-addon-*`. Normal CI/package-preview jobs should not download or
-rebuild the CEF payload; any future CEF runtime package publishing should be
-manual-only.
+inside `fennara-addon-*`. Package Preview may build a separate CEF artifact for
+testing, but release publishing still requires an explicit maintainer-selected
+runtime asset and manifest checksum.
 
 Package scripts fail if CEF runtime files are found inside the addon archive.
 The runtime asset name must be:
@@ -175,15 +178,16 @@ To assemble the runtime zip from a maintainer-selected CEF binary tree:
 
 ```bash
 node scripts/prepare-linux-cef-runtime.mjs \
-  --cef-root /path/to/cef_binary_<version>_linux64 \
+  --cef-root /path/to/cef_binary_<version>_linux64_minimal \
   --version <cef-version> \
   --out-dir dist/cef-runtime
 ```
 
 On Linux, the script builds `fennara_cef_helper` from
-`scripts/cef/linux/fennara_cef_helper.cpp`. On another OS, build that helper on
-Linux first and pass `--helper /path/to/fennara_cef_helper`. Use `--dry-run` to
-inspect the selected files before writing the zip.
+`scripts/cef/linux/fennara_cef_helper.cpp` against the official CEF headers in
+`fennara-cpp/vendor/cef/`. On another OS, build that helper on Linux first and
+pass `--helper /path/to/fennara_cef_helper`. Use `--dry-run` to inspect the
+selected files before writing the zip.
 
 After the script prints the SHA-256, update
 `local/webview-runtimes/linux-cef.json`:

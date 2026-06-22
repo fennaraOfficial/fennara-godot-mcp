@@ -17,15 +17,14 @@ struct MouseState {
 };
 
 bool handle_input(const godot::Ref<godot::InputEvent> &event,
-                  fennara::linux_cef_runtime::capi::cef_browser_host_t *host,
+                  cef_browser_host_t *host,
                   godot::TextureRect *texture_rect,
                   int width,
                   int height,
                   MouseState &mouse_state,
                   bool &request_focus);
 
-void notify_mouse_leave(fennara::linux_cef_runtime::capi::cef_browser_host_t *host,
-                        MouseState &mouse_state);
+void notify_mouse_leave(cef_browser_host_t *host, MouseState &mouse_state);
 
 } // namespace fennara::linux_cef_osr::input
 
