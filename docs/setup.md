@@ -39,6 +39,10 @@ macOS: ~/Library/Application Support/Fennara/bin
 Linux: ~/.local/share/fennara/bin
 ```
 
+The install script only updates the small outer CLI. In normal releases, rerun
+it only when `fennara install` or `fennara update` says the selected release
+requires a newer CLI.
+
 ## 2. Install Fennara In A Godot Project
 
 Run this inside the Godot project folder:
@@ -61,7 +65,9 @@ fennara install --csharp
 addons/fennara
 ```
 
-It also downloads the local Fennara runtime package into your user app-data folder and writes project guidance for AI coding agents:
+It also reads the release manifest, downloads and verifies the local Fennara
+runtime package into your user app-data folder, and writes project guidance for
+AI coding agents:
 
 ```text
 AGENTS.md
@@ -79,9 +85,9 @@ chat CEF runtime:
 
 The CEF browser payload is installed once per user and shared across Godot
 projects/editors. It is not copied into `addons/fennara`. The Linux chat dock
-renders through that shared runtime when it is present. Release builds provide
-the matching CEF runtime manifest and asset; `fennara install`, `fennara update`,
-and `fennara doctor --repair` validate or repair the shared runtime layout.
+renders through that shared runtime when it is present. Release manifests point
+at the matching CEF runtime asset; `fennara install`, `fennara update`, and
+`fennara doctor --repair` validate or repair the shared runtime layout.
 
 The shared CEF runtime directory is read-only during normal browser use. Each
 open Godot editor gets its own writable CEF profile/cache/log directories under
@@ -147,7 +153,9 @@ cd path/to/your-godot-project
 fennara update
 ```
 
-This updates the project addon, the local runtime package, and the generated Fennara guidance files.
+This reads the release manifest and updates the project addon, the local runtime
+package, any shared runtime assets needed by your platform, and the generated
+Fennara guidance files.
 
 If an MCP app is currently running a Fennara launcher, `fennara update` may keep that launcher and continue. That is okay. The versioned runtime package is still updated.
 
@@ -170,6 +178,13 @@ Windows: %LOCALAPPDATA%\Fennara\bin
 macOS: ~/Library/Application Support/Fennara/bin
 Linux: ~/.local/share/fennara/bin
 ```
+
+### Release Requires A Newer CLI
+
+If `fennara install` or `fennara update` says the release requires a newer
+Fennara CLI, rerun the install script from step 1, then run the command again.
+This should be rare; normal package and runtime changes are handled by the
+release manifest.
 
 ### The Addon Is Not Visible In Godot
 

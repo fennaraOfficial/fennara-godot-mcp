@@ -9,7 +9,7 @@ Releases are manual. Do not publish from pull request workflows.
 To bump the repo version:
 
 ```bash
-node scripts/set-version.mjs 0.2.9
+node scripts/set-version.mjs 0.3.0
 ```
 
 The script updates:
@@ -73,7 +73,7 @@ Actions > Release > Run workflow
 Inputs:
 
 ```text
-version: 0.2.9
+version: 0.3.0
 promote_latest: true
 ```
 
@@ -90,7 +90,9 @@ separate `fennara-webview-cef-linux-x64-<cef-version>.zip`, strips staged ELF
 binaries, writes a generated enabled `local/webview-runtimes/linux-cef.json`
 manifest, and feeds that manifest into the CLI packages. The publish job then
 validates that the release assets include the exact CEF zip named by the
-generated manifest and that its SHA-256 matches.
+generated manifest and that its SHA-256 matches. It also writes
+`fennara-release-manifest-v<version>.json`, validates every referenced asset and
+hash, and uploads that manifest with the release.
 
 Pull request workflows do not publish releases. The Package Preview workflow
 creates test artifacts for Linux CEF so maintainers can smoke-test embedded chat
@@ -104,27 +106,27 @@ Windows:
 
 ```text
 fennara-cli-windows-x86_64-v<version>.zip
-fennara-local-windows-x86_64-v<version>.zip
+fennara-release-local-windows-x86_64-v<version>.zip
 ```
 
 Linux:
 
 ```text
 fennara-cli-linux-x86_64-v<version>.zip
-fennara-local-linux-x86_64-v<version>.zip
+fennara-release-local-linux-x86_64-v<version>.zip
 ```
 
 macOS:
 
 ```text
 fennara-cli-macos-arm64-v<version>.zip
-fennara-local-macos-arm64-v<version>.zip
+fennara-release-local-macos-arm64-v<version>.zip
 ```
 
 Shared addon:
 
 ```text
-fennara-addon-v<version>.zip
+fennara-release-addon-v<version>.zip
 fennara-addon-latest.zip
 ```
 
@@ -134,21 +136,48 @@ Linux webview runtime:
 fennara-webview-cef-linux-x64-<cef-version>.zip
 ```
 
+Release manifest:
+
+```text
+fennara-release-manifest-v<version>.json
+```
+
 Package roles:
 
 - `fennara-cli-*`: install script payload; contains only the `fennara` CLI for one platform.
-- `fennara-local-*`: local MCP and daemon launchers plus versioned runtime binaries for one platform.
-- `fennara-addon-v*`: versioned all-platform Godot addon payload copied into projects by the CLI.
+- `fennara-release-local-*`: local MCP and daemon launchers plus versioned runtime binaries for one platform. Release uses the `fennara-release-local-*` prefix so older CLIs cannot silently bypass the manifest.
+- `fennara-release-addon-v*`: versioned all-platform Godot addon payload copied into projects by the CLI through the release manifest.
 - `fennara-addon-latest.zip`: stable all-platform addon URL for the Godot Asset Library and docs links.
 - `fennara-webview-cef-linux-x64-*`: Linux-only shared CEF runtime installed once into Fennara app data by the CLI.
+- `fennara-release-manifest-v*`: schema-versioned install/update plan used by the CLI to resolve assets, verify SHA-256 hashes, and install shared runtimes.
+
+## Release Manifest
+
+Starting in 0.3.0, `fennara install` and `fennara update` prefer the release
+manifest whenever the release publishes one. The manifest records:
+
+- `schema_version`
+- `version`
+- `minimum_cli_version`
+- supported install primitives
+- per-platform CLI and local runtime assets with SHA-256 hashes
+- the shared addon asset with SHA-256
+- platform-specific shared runtime assets, currently Linux CEF
+
+The 0.3.x manifest uses `minimum_cli_version: 0.3.0` by default. Future normal
+package layout or asset name changes should be handled by manifest data, not by
+changing the outer CLI. Raise `minimum_cli_version` only when a release needs a
+new manifest schema or install primitive that older CLIs truly cannot perform.
+
+When the CLI is too old, it should fail before installing packages and print a
+clear instruction to rerun `install.sh` or `install.ps1`.
 
 The shared addon zip contains every built GDExtension binary referenced by `godot/addons/fennara/fennara.gdextension`. Godot loads the matching library for the user's OS and ignores the others.
 
 Linux CEF webview runtime payloads are separate from the addon archive. Release
-packaging generates the enabled runtime manifest at
-`local/webview-runtimes/linux-cef.json`; the Linux CLI package embeds that
-manifest and installs the matching CEF payload once under the user's Fennara
-app-data directory:
+packaging generates the enabled runtime manifest and embeds that data into
+`fennara-release-manifest-v<version>.json`. The CLI installs the matching CEF
+payload once under the user's Fennara app-data directory:
 
 ```text
 webview/cef/linux-x64/<cef-version>/
@@ -230,12 +259,14 @@ After the script prints the SHA-256, update
 }
 ```
 
-For normal releases, the workflow writes this manifest automatically with
-`--write-manifest` and uses the generated copy when building the CLI packages.
-Do not hand-enable the checked-in placeholder manifest unless intentionally
-debugging a manual runtime asset path. If the generated manifest points at an
-asset that is missing or whose SHA-256 does not match, the Release workflow and
-Linux `fennara install` / `fennara update` fail clearly.
+For normal releases, the workflow writes the Linux CEF runtime manifest
+automatically with `--write-manifest`, then `scripts/write-release-manifest.mjs`
+copies the runtime fields into `fennara-release-manifest-v<version>.json`. Do
+not hand-enable the checked-in placeholder manifest unless intentionally
+debugging a manual runtime asset path or legacy fallback behavior. If generated
+manifest data points at an asset that is missing or whose SHA-256 does not
+match, the Release workflow and Linux `fennara install` / `fennara update` fail
+clearly.
 
 The CLI must publish Linux CEF runtime updates atomically: extract and validate
 in a staging directory, write the runtime marker only after required files are
@@ -250,7 +281,7 @@ When release packaging builds the CLI, those templates are compiled into the bin
 `latest` is the moving release used by normal install and update flows.
 
 - `install.ps1` and `install.sh` fetch the latest CLI asset by default.
-- `fennara install` and `fennara update` fetch local/addon packages from `latest` by default.
+- `fennara install` and `fennara update` fetch the release manifest from `latest` by default, then resolve local/addon/shared runtime assets from it.
 - The Godot plugin update check compares against GitHub's latest release.
 
 Use `promote_latest: false` only when publishing a version that should not become the default user install.

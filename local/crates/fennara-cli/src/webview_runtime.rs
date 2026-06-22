@@ -19,6 +19,52 @@ pub fn ensure_for_current_platform(
         return Ok(None);
     }
 
+    let manifest = parse_manifest()?;
+    ensure_linux_cef_manifest(layout, &manifest, release_assets)
+}
+
+pub fn ensure_from_release_manifest(
+    layout: &AppLayout,
+    runtimes: &[Value],
+    release_assets: &Value,
+) -> Result<Vec<String>, String> {
+    let mut messages = Vec::new();
+
+    for runtime in runtimes {
+        if !runtime_matches_current_platform(runtime) {
+            continue;
+        }
+
+        let kind = runtime
+            .get("kind")
+            .or_else(|| runtime.get("runtime"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| "release manifest shared runtime is missing kind".to_string())?;
+        match kind {
+            "cef" | "linux-cef" if platform_name() == "linux" => {
+                if let Some(message) =
+                    ensure_linux_cef_manifest(layout, runtime, Some(release_assets))?
+                {
+                    messages.push(message);
+                }
+            }
+            "cef" | "linux-cef" => {}
+            _ => {
+                return Err(format!(
+                    "release manifest declares unsupported shared runtime kind {kind}"
+                ));
+            }
+        }
+    }
+
+    Ok(messages)
+}
+
+fn ensure_linux_cef_manifest(
+    layout: &AppLayout,
+    manifest: &Value,
+    release_assets: Option<&Value>,
+) -> Result<Option<String>, String> {
     fs::create_dir_all(&layout.webview_dir).map_err(|err| {
         format!(
             "failed to create webview runtime dir {}: {err}",
@@ -26,8 +72,7 @@ pub fn ensure_for_current_platform(
         )
     })?;
 
-    let manifest = parse_manifest()?;
-    let platform_arch = manifest_string(&manifest, "platform_arch")?;
+    let platform_arch = manifest_string(manifest, "platform_arch")?;
     if platform_arch != current_linux_platform_arch() {
         return Ok(Some(format!(
             "webview runtime: CEF manifest targets {platform_arch}; current target is {}",
@@ -52,7 +97,7 @@ pub fn ensure_for_current_platform(
         )));
     }
 
-    let version = manifest_string(&manifest, "version")?;
+    let version = manifest_string(manifest, "version")?;
     if version.starts_with("TODO") || version.is_empty() {
         return Err(
             "Linux CEF runtime manifest is enabled but version is not finalized".to_string(),
@@ -60,8 +105,8 @@ pub fn ensure_for_current_platform(
     }
 
     let target_dir = layout.linux_cef_runtime_dir(platform_arch, version);
-    if runtime_complete(&target_dir, &manifest) {
-        write_current_runtime(&target_dir, &manifest)?;
+    if runtime_complete(&target_dir, manifest) {
+        write_current_runtime(&target_dir, manifest)?;
         return Ok(Some(format!(
             "webview runtime: Linux CEF runtime is installed at {}",
             display_path(&target_dir)
@@ -94,7 +139,7 @@ pub fn ensure_for_current_platform(
     )?;
 
     let temp_dir = create_temp_dir()?;
-    let result = download_and_install_zip(&url, sha256, &temp_dir, &target_dir, &manifest);
+    let result = download_and_install_zip(&url, sha256, &temp_dir, &target_dir, manifest);
     let _ = fs::remove_dir_all(&temp_dir);
     result?;
 
@@ -177,14 +222,55 @@ fn current_linux_platform_arch() -> &'static str {
     }
 }
 
+fn runtime_matches_current_platform(manifest: &Value) -> bool {
+    manifest
+        .get("platform")
+        .and_then(Value::as_str)
+        .map(|platform| platform == platform_name())
+        .unwrap_or(true)
+        && manifest
+            .get("arch")
+            .and_then(Value::as_str)
+            .map(|arch| arch == arch_name())
+            .unwrap_or(true)
+}
+
 fn runtime_complete(runtime_dir: &Path, manifest: &Value) -> bool {
     runtime_dir.join("fennara-cef-runtime.json").is_file()
+        && runtime_marker_matches(runtime_dir, manifest)
         && manifest
             .get("version")
             .and_then(Value::as_str)
             .map(|version| runtime_dir.ends_with(version))
             .unwrap_or(false)
         && required_files_present(runtime_dir, manifest).is_ok()
+}
+
+fn runtime_marker_matches(runtime_dir: &Path, manifest: &Value) -> bool {
+    let marker_path = runtime_dir.join("fennara-cef-runtime.json");
+    let Ok(raw) = fs::read_to_string(marker_path) else {
+        return false;
+    };
+    let Ok(marker) = serde_json::from_str::<Value>(&raw) else {
+        return false;
+    };
+
+    marker_string(&marker, "version") == manifest.get("version").and_then(Value::as_str)
+        && marker_string(&marker, "platform_arch")
+            == manifest.get("platform_arch").and_then(Value::as_str)
+        && archive_sha256(&marker) == archive_sha256(manifest)
+}
+
+fn marker_string<'a>(marker: &'a Value, field: &str) -> Option<&'a str> {
+    marker.get(field).and_then(Value::as_str)
+}
+
+fn archive_sha256(manifest: &Value) -> Option<&str> {
+    manifest
+        .get("archive")
+        .and_then(|archive| archive.get("sha256"))
+        .and_then(Value::as_str)
+        .filter(|sha256| !sha256.is_empty())
 }
 
 fn archive_url(

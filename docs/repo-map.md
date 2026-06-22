@@ -31,7 +31,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | `local/crates/fennara-mcp/` | Local stdio MCP server and tool schema forwarding. |
 | `local/crates/fennara-daemon/` | Local daemon used for runtime sessions and Godot bridge work. |
 | `local/schemas/tools/` | MCP tool JSON schemas embedded into the local MCP server. |
-| `local/webview-runtimes/linux-cef.json` | Linux CEF runtime manifest. It records the shared app-data layout and archive metadata without placing CEF inside the addon zip. |
+| `local/webview-runtimes/linux-cef.json` | Linux CEF runtime placeholder/generated manifest used for release manifest generation, doctor output, and legacy fallback. It records the shared app-data layout and archive metadata without placing CEF inside the addon zip. |
 | `local/Cargo.toml` | Rust workspace config. |
 | `local/Cargo.lock` | Locked Rust dependency graph. |
 
@@ -73,12 +73,13 @@ This is the quick map for contributors and coding agents working in this reposit
 | `scripts/prepare-linux-cef-runtime.mjs` | Stages the separate Linux x64 CEF runtime zip, strips staged ELF binaries, validates required files, and can write the generated release manifest. |
 | `scripts/prepare-linux-cef-sdk.mjs` | Downloads and extracts the pinned official CEF 139 Linux minimal SDK for CI builds that need `libcef_dll/` wrapper source. |
 | `scripts/check-linux-cef-runtime-release.mjs` | Validates the Linux CEF runtime release asset against the generated `local/webview-runtimes/linux-cef.json` manifest. |
+| `scripts/write-release-manifest.mjs` | Writes and validates `fennara-release-manifest-v<version>.json` from release assets, including local package, addon, and shared runtime hashes. |
 | `scripts/cef/linux/fennara_cef_helper.cpp` | Minimal Linux CEF subprocess helper source packaged inside the separate CEF runtime zip. |
 | `.github/workflows/version-check.yml` | Version consistency check. |
 | `.github/workflows/gdextension-build.yml` | GDExtension build check. |
 | `.github/workflows/local-build.yml` | Rust local package build check. |
 | `.github/workflows/package-preview.yml` | Manual package preview artifacts, including a test-only Linux CEF runtime artifact for Linux chat smoke tests. |
-| `.github/workflows/release.yml` | Manual GitHub release publishing, including generated Linux CEF runtime packaging, generated manifest propagation, and final asset validation. |
+| `.github/workflows/release.yml` | Manual GitHub release publishing, including generated Linux CEF runtime packaging, release manifest generation, and final asset validation. |
 
 ## Where To Change Things
 
@@ -93,7 +94,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | Change in-editor chat UI | `ui/chat/`, `godot/addons/fennara/dist/`, `fennara-cpp/src/ui/dock.cpp`, and `fennara-cpp/src/ui/webview_host*` |
 | Change vendored chat UI libraries | `ui/chat/vendor/`, `godot/addons/fennara/dist/vendor/`, and `THIRD_PARTY_NOTICES.md` |
 | Change C# support | `fennara-cpp/src/lsp/` and `local/crates/fennara-cli/src/csharp_support.rs` |
-| Change release packages | `scripts/package-preview.mjs` and `.github/workflows/release.yml` |
+| Change release packages | `local/crates/fennara-cli/src/release_manifest.rs`, `local/crates/fennara-cli/src/release_package.rs`, `scripts/package-preview.mjs`, `scripts/write-release-manifest.mjs`, and `.github/workflows/release.yml` |
 | Bump version | `node scripts/set-version.mjs <version>` |
 | Update setup docs | `README.md`, `docs/setup.md`, and `docs/manual-install.md` |
 

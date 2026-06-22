@@ -62,10 +62,13 @@ OpenRouter settings are global for now, while chats remain project-scoped.
 
 ## Install Layout
 
-The install script only installs the CLI and adds it to `PATH`.
+The install script only installs the CLI and adds it to `PATH`. Users normally
+rerun it only when a release manifest raises `minimum_cli_version` because the
+outer CLI needs a new schema or install primitive.
 
-After that, `fennara install` or `fennara update` downloads release assets and
-sets up the local package layout.
+After that, `fennara install` or `fennara update` fetches the release manifest,
+verifies referenced asset hashes, downloads release assets, and sets up the
+local package layout.
 
 ```text
 Fennara/
@@ -175,7 +178,8 @@ validation, runtime state, screenshots, and editor-aware edits.
 
 ## Updates
 
-`fennara update` is the normal project update command.
+`fennara update` is the normal project update command. It uses the same
+manifest-driven resolver and installer as `fennara install`.
 
 It can update:
 
@@ -204,16 +208,16 @@ Each public release publishes separate assets so installs can stay modular:
 | Asset | Purpose |
 | --- | --- |
 | `fennara-cli-<platform>-<arch>-v<version>.zip` | CLI and stable launchers. |
-| `fennara-local-<platform>-<arch>-v<version>.zip` | Versioned MCP and daemon runtimes. |
-| `fennara-addon-v<version>.zip` / `fennara-addon-latest.zip` | All-platform Godot addon payload with every built GDExtension binary referenced by `fennara.gdextension`. |
+| `fennara-release-local-<platform>-<arch>-v<version>.zip` | Versioned MCP and daemon runtimes selected by the release manifest. |
+| `fennara-release-addon-v<version>.zip` / `fennara-addon-latest.zip` | All-platform Godot addon payload with every built GDExtension binary referenced by `fennara.gdextension`. |
 | `fennara-webview-cef-linux-x64-<cef-version>.zip` | Linux-only shared CEF runtime installed once into Fennara app data. |
+| `fennara-release-manifest-v<version>.json` | Schema-versioned install/update plan with asset names, hashes, minimum CLI version, and shared runtime declarations. |
 
 The moving `latest` release is what normal users should install from. Versioned
 releases such as `v0.2.8` stay available for pinning and debugging.
 
 Linux CEF runtime payloads are not part of `fennara-addon-*`. They are selected
-by the generated release copy of `local/webview-runtimes/linux-cef.json` and
-installed once into the shared app-data
+by the release manifest and installed once into the shared app-data
 `webview/cef/linux-x64/<cef-version>/` directory.
 
 CEF runtime installs stage into a temporary sibling directory, validate required

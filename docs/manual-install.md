@@ -16,20 +16,27 @@ Open the latest GitHub release:
 
 https://github.com/fennaraOfficial/fennara-godot-mcp/releases/latest
 
-Download the CLI and local runtime files for your platform, plus the shared addon zip.
+Download the release manifest, the CLI and local runtime files for your
+platform, plus the shared addon zip.
+
+Release manifest:
+
+```text
+fennara-release-manifest-v<version>.json
+```
 
 Windows:
 
 ```text
 fennara-cli-windows-x86_64-v<version>.zip
-fennara-local-windows-x86_64-v<version>.zip
+fennara-release-local-windows-x86_64-v<version>.zip
 ```
 
 Linux:
 
 ```text
 fennara-cli-linux-x86_64-v<version>.zip
-fennara-local-linux-x86_64-v<version>.zip
+fennara-release-local-linux-x86_64-v<version>.zip
 fennara-webview-cef-linux-x64-<cef-version>.zip
 ```
 
@@ -37,13 +44,13 @@ macOS:
 
 ```text
 fennara-cli-macos-arm64-v<version>.zip
-fennara-local-macos-arm64-v<version>.zip
+fennara-release-local-macos-arm64-v<version>.zip
 ```
 
 Shared addon:
 
 ```text
-fennara-addon-v<version>.zip
+fennara-release-addon-v<version>.zip
 ```
 
 For Godot Asset Library links, use the stable latest asset:
@@ -51,6 +58,10 @@ For Godot Asset Library links, use the stable latest asset:
 ```text
 fennara-addon-latest.zip
 ```
+
+The manifest records the expected SHA-256 for the local runtime, addon, and
+shared runtime assets. Use it as the source of truth when checking manual
+downloads.
 
 ## 2. Install The CLI
 

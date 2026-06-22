@@ -128,8 +128,10 @@ void FennaraDock::_sync_webview_bounds() {
         return;
     }
 
-    webview_host->set_visible(true);
     webview_host->resize_to(webview_region ? webview_region : this);
+    if (webview_host->uses_internal_surface()) {
+        webview_host->set_visible(true);
+    }
 }
 
 void FennaraDock::_build_ui() {

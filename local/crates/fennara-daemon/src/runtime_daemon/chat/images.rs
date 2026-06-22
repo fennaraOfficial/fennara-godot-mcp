@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 pub(crate) const MAX_IMAGE_COUNT: usize = 4;
 pub(crate) const MAX_IMAGE_BYTES: usize = 3 * 1024 * 1024;
-pub(crate) const MAX_TOTAL_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_TOTAL_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct ClientImage {

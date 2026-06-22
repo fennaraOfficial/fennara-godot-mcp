@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use super::{
     ids::{new_id, now_ms},
+    images::{self, ChatImage, MAX_TOTAL_IMAGE_BYTES},
     schema::{connection, to_store_error},
     settings::{self, DEFAULT_MODEL},
 };
@@ -504,7 +505,8 @@ pub(crate) fn replay_messages(chat_id: &str) -> Result<Vec<Value>, String> {
                END AS content,
                m.tool_call_id,
                m.tool_name,
-               m.tool_calls_json
+               m.tool_calls_json,
+               m.metadata_json
              FROM chat_messages m
              LEFT JOIN chat_tool_calls t ON t.id = m.tool_call_id
              WHERE m.chat_id = ?1
@@ -514,33 +516,72 @@ pub(crate) fn replay_messages(chat_id: &str) -> Result<Vec<Value>, String> {
              LIMIT ?2",
         )
         .map_err(to_store_error)?;
-    let rows = statement
-        .query_map(params![chat_id, REPLAY_MESSAGE_LIMIT], |row| {
-            let role: String = row.get(0)?;
-            let content: String = row.get(1)?;
-            let tool_call_id: Option<String> = row.get(2)?;
-            let tool_name: Option<String> = row.get(3)?;
-            let tool_calls_json: Option<String> = row.get(4)?;
-            let mut message = json!({ "role": role, "content": content });
-            if let Some(tool_call_id) = tool_call_id {
-                message["tool_call_id"] = json!(tool_call_id);
-            }
-            if let Some(tool_name) = tool_name {
-                message["tool_name"] = json!(tool_name);
-            }
-            if let Some(tool_calls_json) = tool_calls_json {
-                if let Ok(tool_calls) = serde_json::from_str::<Value>(&tool_calls_json) {
-                    message["tool_calls"] = tool_calls;
-                }
-            }
-            Ok(message)
-        })
+    let mut rows = statement
+        .query(params![chat_id, REPLAY_MESSAGE_LIMIT])
         .map_err(to_store_error)?;
-    let mut messages = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(to_store_error)?;
+    let mut messages = Vec::new();
+    let mut replay_image_bytes = 0usize;
+
+    while let Some(row) = rows.next().map_err(to_store_error)? {
+        let role: String = row.get(0).map_err(to_store_error)?;
+        let content: String = row.get(1).map_err(to_store_error)?;
+        let tool_call_id: Option<String> = row.get(2).map_err(to_store_error)?;
+        let tool_name: Option<String> = row.get(3).map_err(to_store_error)?;
+        let tool_calls_json: Option<String> = row.get(4).map_err(to_store_error)?;
+        let metadata_json: Option<String> = row.get(5).map_err(to_store_error)?;
+        let replay_images =
+            replay_images_from_metadata(metadata_json.as_deref(), &mut replay_image_bytes);
+        let message_content = if role == "user" && !replay_images.is_empty() {
+            images::user_content_value(&content, &replay_images)
+        } else {
+            json!(content)
+        };
+        let mut message = json!({ "role": role, "content": message_content });
+        if let Some(tool_call_id) = tool_call_id {
+            message["tool_call_id"] = json!(tool_call_id);
+        }
+        if let Some(tool_name) = tool_name {
+            message["tool_name"] = json!(tool_name);
+        }
+        if let Some(tool_calls_json) = tool_calls_json {
+            if let Ok(tool_calls) = serde_json::from_str::<Value>(&tool_calls_json) {
+                message["tool_calls"] = tool_calls;
+            }
+        }
+        messages.push(message);
+    }
+
     messages.reverse();
     Ok(messages)
+}
+
+fn replay_images_from_metadata(
+    metadata_json: Option<&str>,
+    replay_image_bytes: &mut usize,
+) -> Vec<ChatImage> {
+    let Some(metadata_json) = metadata_json else {
+        return Vec::new();
+    };
+    let Ok(metadata) = serde_json::from_str::<Value>(metadata_json) else {
+        return Vec::new();
+    };
+    let Some(images) = metadata.get("images") else {
+        return Vec::new();
+    };
+    let Ok(images) = serde_json::from_value::<Vec<ChatImage>>(images.clone()) else {
+        return Vec::new();
+    };
+
+    let mut selected = Vec::new();
+    for image in images {
+        let next_total = replay_image_bytes.saturating_add(image.size_bytes);
+        if next_total > MAX_TOTAL_IMAGE_BYTES {
+            break;
+        }
+        *replay_image_bytes = next_total;
+        selected.push(image);
+    }
+    selected
 }
 
 pub(crate) fn set_active_chat_id(scope: &ProjectScope, chat_id: &str) -> Result<(), String> {

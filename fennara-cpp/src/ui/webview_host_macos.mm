@@ -10,6 +10,7 @@
 
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <objc/runtime.h>
 
 #include <dispatch/dispatch.h>
 #include <cstdlib>
@@ -17,10 +18,174 @@
 #include <memory>
 #include <string>
 
+static const NSUInteger kMaxPasteImageBytes = 8 * 1024 * 1024;
+
+@interface FennaraMacWebViewDelegate : NSObject <WKUIDelegate, WKScriptMessageHandler>
+@property(nonatomic, assign) WKWebView *webView;
+@end
+
+@implementation FennaraMacWebViewDelegate
+
+- (void)webView:(WKWebView *)webView
+    runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
+              initiatedByFrame:(WKFrameInfo *)frame
+             completionHandler:(void (^)(NSArray<NSURL *> *URLs))completionHandler {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = NO;
+    panel.allowsMultipleSelection = parameters.allowsMultipleSelection;
+    panel.allowedFileTypes = @[@"png", @"jpg", @"jpeg", @"webp", @"gif"];
+
+    void (^finish)(NSModalResponse) = ^(NSModalResponse result) {
+        if (result == NSModalResponseOK) {
+            completionHandler(panel.URLs);
+            return;
+        }
+        completionHandler(nil);
+    };
+
+    NSWindow *window = webView.window;
+    if (window != nil) {
+        [panel beginSheetModalForWindow:window completionHandler:finish];
+    } else {
+        finish([panel runModal]);
+    }
+}
+
+- (void)userContentController:(WKUserContentController *)userContentController
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (![message.name isEqualToString:@"fennaraPasteboard"]) {
+        return;
+    }
+    [self sendPasteboardImageToWebView];
+}
+
+- (void)sendPasteboardImageToWebView {
+    WKWebView *view = self.webView;
+    if (view == nil) {
+        return;
+    }
+
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    NSData *imageData = [pasteboard dataForType:NSPasteboardTypePNG];
+    NSString *mimeType = @"image/png";
+    NSString *name = @"pasted-image.png";
+    if (![self imageDataIsSmallEnough:imageData]) {
+        [self sendPasteboardError:@"Image is too large. Try a smaller screenshot."];
+        return;
+    }
+
+    if (imageData == nil) {
+        NSData *tiffData = [pasteboard dataForType:NSPasteboardTypeTIFF];
+        if (tiffData != nil) {
+            if (![self imageDataIsSmallEnough:tiffData]) {
+                [self sendPasteboardError:@"Image is too large. Try a smaller screenshot."];
+                return;
+            }
+            NSImageRep *rep = [NSBitmapImageRep imageRepWithData:tiffData];
+            if ([rep isKindOfClass:[NSBitmapImageRep class]]) {
+                imageData = [(NSBitmapImageRep *)rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+                if (![self imageDataIsSmallEnough:imageData]) {
+                    [self sendPasteboardError:@"Image is too large. Try a smaller screenshot."];
+                    return;
+                }
+            }
+        }
+    }
+
+    if (imageData == nil) {
+        NSArray *urls = [pasteboard readObjectsForClasses:@[[NSURL class]]
+                                                  options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+        for (NSURL *url in urls) {
+            NSString *extension = url.pathExtension.lowercaseString;
+            if ([extension isEqualToString:@"png"]) {
+                mimeType = @"image/png";
+            } else if ([extension isEqualToString:@"jpg"] || [extension isEqualToString:@"jpeg"]) {
+                mimeType = @"image/jpeg";
+            } else if ([extension isEqualToString:@"webp"]) {
+                mimeType = @"image/webp";
+            } else if ([extension isEqualToString:@"gif"]) {
+                mimeType = @"image/gif";
+            } else {
+                continue;
+            }
+
+            NSNumber *fileSize = nil;
+            if ([url getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil] &&
+                fileSize != nil &&
+                [fileSize unsignedLongLongValue] > kMaxPasteImageBytes) {
+                [self sendPasteboardError:@"Image is too large. Try a smaller screenshot."];
+                return;
+            }
+            imageData = [NSData dataWithContentsOfURL:url];
+            if (![self imageDataIsSmallEnough:imageData]) {
+                [self sendPasteboardError:@"Image is too large. Try a smaller screenshot."];
+                return;
+            }
+            name = url.lastPathComponent.length > 0 ? url.lastPathComponent : name;
+            if (imageData != nil) {
+                break;
+            }
+        }
+    }
+
+    if (imageData == nil || imageData.length == 0) {
+        return;
+    }
+
+    NSDictionary *payload = @{
+        @"base64": [imageData base64EncodedStringWithOptions:0],
+        @"mime_type": mimeType,
+        @"name": name,
+        @"size": @(imageData.length),
+    };
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
+    if (jsonData == nil) {
+        return;
+    }
+    NSString *json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    if (json == nil) {
+        return;
+    }
+
+    NSString *script = [NSString stringWithFormat:
+        @"window.FennaraNativePasteboard&&window.FennaraNativePasteboard.receiveImage(%@)", json];
+    [view evaluateJavaScript:script completionHandler:nil];
+    [json release];
+}
+
+- (BOOL)imageDataIsSmallEnough:(NSData *)imageData {
+    return imageData == nil || imageData.length <= kMaxPasteImageBytes;
+}
+
+- (void)sendPasteboardError:(NSString *)message {
+    WKWebView *view = self.webView;
+    if (view == nil || message.length == 0) {
+        return;
+    }
+    NSDictionary *payload = @{@"message": message};
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
+    if (jsonData == nil) {
+        return;
+    }
+    NSString *json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    if (json == nil) {
+        return;
+    }
+    NSString *script = [NSString stringWithFormat:
+        @"window.FennaraNativePasteboard&&window.FennaraNativePasteboard.receiveError(%@)", json];
+    [view evaluateJavaScript:script completionHandler:nil];
+    [json release];
+}
+
+@end
+
 namespace fennara {
 namespace mac_webview {
 
 namespace {
+
+char kMacWebViewDelegateKey;
 
 godot::String ptr_string(const void *ptr) {
     return godot::String::num_uint64(reinterpret_cast<uint64_t>(ptr), 16);
@@ -218,13 +383,25 @@ bool start(void **webview, void **parent_window, godot::Control *owner, const go
             return;
         }
 
+        WKUserContentController *user_content = [[WKUserContentController alloc] init];
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+        configuration.userContentController = user_content;
         WKWebView *view = [[WKWebView alloc] initWithFrame:NSZeroRect configuration:configuration];
         [configuration release];
+        [user_content release];
         if (view == nil) {
             output_log("macOS webview start failed: WKWebView nil");
             return;
         }
+
+        FennaraMacWebViewDelegate *delegate = [[FennaraMacWebViewDelegate alloc] init];
+        delegate.webView = view;
+        [view setUIDelegate:delegate];
+        [view.configuration.userContentController addScriptMessageHandler:delegate
+                                                                     name:@"fennaraPasteboard"];
+        objc_setAssociatedObject(view, &kMacWebViewDelegateKey, delegate,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [delegate release];
 
         [view setHidden:YES];
         [content addSubview:view];
@@ -323,6 +500,10 @@ void stop(void **webview, void **parent_window) {
     run_on_main_sync(^{
         WKWebView *view = reinterpret_cast<WKWebView *>(view_ptr);
         debug_log("macOS webview stop view=" + ptr_string(view));
+        [view.configuration.userContentController removeScriptMessageHandlerForName:@"fennaraPasteboard"];
+        [view setUIDelegate:nil];
+        objc_setAssociatedObject(view, &kMacWebViewDelegateKey, nil,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [view removeFromSuperview];
         [view release];
     });

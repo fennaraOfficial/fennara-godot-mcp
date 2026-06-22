@@ -35,7 +35,8 @@ const requiredFiles = manifest.required_files ?? [];
 validateVersion(version);
 const cefReleaseDir = firstExisting(path.join(cefRoot, "Release"), cefRoot);
 const cefResourcesDir = firstExisting(path.join(cefRoot, "Resources"), cefRoot);
-const helperPath = args.helper ? path.resolve(root, args.helper) : path.join(stageDir, "fennara_cef_helper");
+const helperSource = args.helper ? path.resolve(root, args.helper) : null;
+const helperPath = path.join(stageDir, "fennara_cef_helper");
 
 const plan = buildPlan();
 if (dryRun) {
@@ -48,7 +49,7 @@ mkdirSync(stageDir, { recursive: true });
 mkdirSync(outDir, { recursive: true });
 
 if (args.helper) {
-  copyFile(args.helper, helperPath);
+  copyFile(helperSource, helperPath);
   chmodSync(helperPath, 0o755);
 } else {
   buildHelper(helperPath);

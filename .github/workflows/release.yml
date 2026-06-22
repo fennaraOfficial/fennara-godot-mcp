@@ -329,10 +329,45 @@ jobs:
           name: fennara-generated-linux-cef-manifest
           path: generated-linux-cef-manifest
 
+      - name: Rename manifest-managed release packages
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ inputs.version }}"
+          shopt -s nullglob
+
+          renamed_local_count=0
+          for asset in release-assets/fennara-local-*-v"${version}".zip; do
+            renamed="${asset/release-assets\/fennara-local-/release-assets\/fennara-release-local-}"
+            mv "${asset}" "${renamed}"
+            renamed_local_count=$((renamed_local_count + 1))
+          done
+          if [[ "${renamed_local_count}" -eq 0 ]]; then
+            echo "::error::No release-assets/fennara-local-*-v${version}.zip files found."
+            exit 1
+          fi
+
+          if [[ -f "release-assets/fennara-addon-v${version}.zip" ]]; then
+            mv "release-assets/fennara-addon-v${version}.zip" \
+              "release-assets/fennara-release-addon-v${version}.zip"
+          else
+            echo "::error::Missing release-assets/fennara-addon-v${version}.zip"
+            exit 1
+          fi
+
       - name: Validate Linux CEF runtime release asset
         run: |
           cp generated-linux-cef-manifest/linux-cef.json local/webview-runtimes/linux-cef.json
           node scripts/check-linux-cef-runtime-release.mjs --assets-dir release-assets
+
+      - name: Write release manifest
+        run: |
+          node scripts/write-release-manifest.mjs \
+            --assets-dir release-assets \
+            --linux-cef-manifest generated-linux-cef-manifest/linux-cef.json \
+            --minimum-cli-version 0.3.0 \
+            --out "release-assets/fennara-release-manifest-v${{ inputs.version }}.json"
 
       - name: Publish release
         env:
@@ -349,7 +384,7 @@ jobs:
             exit 1
           fi
 
-          mapfile -t assets < <(find release-assets -type f -name '*.zip' | sort)
+          mapfile -t assets < <(find release-assets -type f \( -name '*.zip' -o -name 'fennara-release-manifest-v*.json' \) | sort)
           if [[ "${#assets[@]}" -eq 0 ]]; then
             echo "::error::No release assets found."
             exit 1

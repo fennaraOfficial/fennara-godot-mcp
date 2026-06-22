@@ -15,6 +15,7 @@ Run `check-version.mjs` in CI and before release packaging. Use `set-version.mjs
 
 - `package-preview.mjs`: assembles per-platform preview archives after the GDExtension and local Rust binaries have already been built.
 - `package-addon-all.mjs`: combines platform addon parts into the final all-platform addon archive.
+- `write-release-manifest.mjs`: writes `fennara-release-manifest-v<version>.json` from release assets and validates every referenced SHA-256.
 
 Both scripts use `.package-preview/` as temporary staging and write zip outputs under the repo-root `dist/` folder. Those outputs are ignored and should not be committed.
 

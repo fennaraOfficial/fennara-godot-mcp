@@ -133,7 +133,7 @@ cd path/to/your-godot-project
 fennara update
 ```
 
-`fennara update` refreshes the project addon, local runtime package, generated Fennara guidance files, and any release-managed shared webview runtime needed by the current platform.
+`fennara update` reads the release manifest, then refreshes the project addon, local runtime package, generated Fennara guidance files, and any release-managed shared webview runtime needed by the current platform. Rerun the install script only when the CLI says a release requires a newer outer CLI.
 
 ## Tools
 

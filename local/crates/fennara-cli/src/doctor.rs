@@ -48,7 +48,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     }
 
     println!(
-        "release asset hint: fennara-local-{}-{}-v{VERSION}.zip",
+        "release local asset hint: fennara-release-local-{}-{}-v{VERSION}.zip",
         platform_name(),
         arch_name()
     );
@@ -57,7 +57,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
         platform_name(),
         arch_name()
     );
-    println!("addon asset hint: fennara-addon-v{VERSION}.zip");
+    println!("release addon asset hint: fennara-release-addon-v{VERSION}.zip");
     webview_runtime::report_for_doctor(&layout, repair)?;
 
     if repair {

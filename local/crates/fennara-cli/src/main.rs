@@ -4,6 +4,7 @@ mod doctor;
 mod mcp_setup;
 mod project_guidance;
 mod project_install;
+mod release_manifest;
 mod release_package;
 mod release_update;
 mod webview_runtime;
