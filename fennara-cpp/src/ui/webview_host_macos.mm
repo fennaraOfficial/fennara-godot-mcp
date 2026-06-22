@@ -57,7 +57,6 @@ static const NSUInteger kMaxPasteImageBytes = 3 * 1024 * 1024;
     if (![message.name isEqualToString:@"fennaraPasteboard"]) {
         return;
     }
-    godot::UtilityFunctions::print("[Fennara] macOS pasteboard image request");
     [self sendPasteboardImageToWebView];
 }
 
@@ -72,20 +71,14 @@ static const NSUInteger kMaxPasteImageBytes = 3 * 1024 * 1024;
     NSString *mimeType = @"image/png";
     NSString *name = @"pasted-image.png";
     if (![self imageDataIsSmallEnough:imageData]) {
-        godot::UtilityFunctions::print("[Fennara] macOS pasteboard PNG rejected: over 3 MB");
         [self sendPasteboardError:@"Each image must be 3 MB or smaller."];
         return;
-    }
-    if (imageData != nil) {
-        godot::UtilityFunctions::print(godot::String("[Fennara] macOS pasteboard PNG bytes=") +
-                                      godot::String::num_uint64(imageData.length));
     }
 
     if (imageData == nil) {
         NSData *tiffData = [pasteboard dataForType:NSPasteboardTypeTIFF];
         if (tiffData != nil) {
             if (![self imageDataIsSmallEnough:tiffData]) {
-                godot::UtilityFunctions::print("[Fennara] macOS pasteboard TIFF rejected: over 3 MB");
                 [self sendPasteboardError:@"Each image must be 3 MB or smaller."];
                 return;
             }
@@ -93,13 +86,8 @@ static const NSUInteger kMaxPasteImageBytes = 3 * 1024 * 1024;
             if ([rep isKindOfClass:[NSBitmapImageRep class]]) {
                 imageData = [(NSBitmapImageRep *)rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
                 if (![self imageDataIsSmallEnough:imageData]) {
-                    godot::UtilityFunctions::print("[Fennara] macOS pasteboard converted TIFF rejected: over 3 MB");
                     [self sendPasteboardError:@"Each image must be 3 MB or smaller."];
                     return;
-                }
-                if (imageData != nil) {
-                    godot::UtilityFunctions::print(godot::String("[Fennara] macOS pasteboard TIFF converted bytes=") +
-                                                  godot::String::num_uint64(imageData.length));
                 }
             }
         }
@@ -126,27 +114,22 @@ static const NSUInteger kMaxPasteImageBytes = 3 * 1024 * 1024;
             if ([url getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil] &&
                 fileSize != nil &&
                 [fileSize unsignedLongLongValue] > kMaxPasteImageBytes) {
-                godot::UtilityFunctions::print("[Fennara] macOS pasteboard file URL rejected: over 3 MB");
                 [self sendPasteboardError:@"Each image must be 3 MB or smaller."];
                 return;
             }
             imageData = [NSData dataWithContentsOfURL:url];
             if (![self imageDataIsSmallEnough:imageData]) {
-                godot::UtilityFunctions::print("[Fennara] macOS pasteboard file URL rejected after read: over 3 MB");
                 [self sendPasteboardError:@"Each image must be 3 MB or smaller."];
                 return;
             }
             name = url.lastPathComponent.length > 0 ? url.lastPathComponent : name;
             if (imageData != nil) {
-                godot::UtilityFunctions::print(godot::String("[Fennara] macOS pasteboard file URL image bytes=") +
-                                              godot::String::num_uint64(imageData.length));
                 break;
             }
         }
     }
 
     if (imageData == nil || imageData.length == 0) {
-        godot::UtilityFunctions::print("[Fennara] macOS pasteboard had no supported image data");
         return;
     }
 
@@ -168,8 +151,6 @@ static const NSUInteger kMaxPasteImageBytes = 3 * 1024 * 1024;
     NSString *script = [NSString stringWithFormat:
         @"window.FennaraNativePasteboard&&window.FennaraNativePasteboard.receiveImage(%@)", json];
     [view evaluateJavaScript:script completionHandler:nil];
-    godot::UtilityFunctions::print(godot::String("[Fennara] macOS pasteboard image sent to chat bytes=") +
-                                  godot::String::num_uint64(imageData.length));
     [json release];
 }
 

@@ -934,24 +934,10 @@
     prompt.focus();
   }
 
-  function imageDebug(message, detail = null) {
-    const text = `[Fennara images] ${message}`;
-    console.debug(text, detail || "");
-  }
-
-  function describeFile(file) {
-    if (!file) {
-      return "null file";
-    }
-    return `name=${file.name || "(none)"} type=${file.type || "(empty)"} inferred=${imageMimeType(file) || "(none)"} size=${file.size || 0}`;
-  }
-
   async function addImageFiles(files) {
     const unique = uniqueFiles(files);
-    imageDebug(`received ${unique.length} file(s)`, unique.map(describeFile).join(" | ") || "none");
     const imageFiles = unique.filter((file) => file && imageMimeType(file));
     if (imageFiles.length === 0) {
-      imageDebug("no supported image files found");
       return 0;
     }
     let added = 0;
@@ -963,13 +949,11 @@
       const mimeType = imageMimeType(file);
       const validationError = validateImageFile(file, mimeType);
       if (validationError) {
-        imageDebug("rejected image", `${describeFile(file)} reason=${validationError}`);
         appendSystem(validationError);
         continue;
       }
       const totalSize = attachedImages.reduce((sum, image) => sum + image.size, 0) + file.size;
       if (totalSize > MAX_TOTAL_IMAGE_BYTES) {
-        imageDebug("rejected image", `${describeFile(file)} reason=total size limit`);
         appendSystem(`Attached images must be ${formatBytes(MAX_TOTAL_IMAGE_BYTES)} total or less.`);
         continue;
       }
@@ -989,9 +973,7 @@
           description: file.name || "user image",
         });
         added += 1;
-        imageDebug("attached image", describeFile(file));
       } catch {
-        imageDebug("failed to read image", describeFile(file));
         appendSystem("Could not read that image.");
       }
     }
@@ -1154,31 +1136,23 @@
   function requestNativePastedImage() {
     const bridge = nativePasteboardBridge();
     if (!bridge) {
-      imageDebug("native pasteboard bridge unavailable");
       return false;
     }
     try {
-      imageDebug("requesting native pasteboard image");
       bridge.postMessage({ type: "paste_image" });
       return true;
     } catch {
-      imageDebug("native pasteboard request failed");
       return false;
     }
   }
 
   window.FennaraNativePasteboard = {
     receiveImage(image) {
-      imageDebug(
-        "native pasteboard returned image",
-        `name=${image?.name || "(none)"} type=${image?.mime_type || "(empty)"} size=${image?.size || 0}`,
-      );
       addImagePayload(image);
       window.setTimeout(resizePrompt, 0);
     },
     receiveError(error) {
       const message = String(error?.message || "Could not paste that image.");
-      imageDebug("native pasteboard returned error", message);
       appendSystem(message);
       window.setTimeout(resizePrompt, 0);
     },
@@ -1217,7 +1191,6 @@
     imageInput?.click();
   });
   imageInput?.addEventListener("change", () => {
-    imageDebug("file picker changed", `${imageInput.files?.length || 0} selected`);
     addImageFiles(imageInput.files).finally(() => {
       imageInput.value = "";
     });
@@ -1399,10 +1372,6 @@
       .map((item) => item.getAsFile())
       .filter(Boolean);
     const files = [...directFiles, ...itemFiles];
-    imageDebug(
-      "paste event",
-      `directFiles=${directFiles.length} itemFiles=${itemFiles.length} items=${event.clipboardData?.items?.length || 0}`,
-    );
     if (files.length > 0) {
       addImageFiles(files).then((added) => {
         if (added === 0) {
