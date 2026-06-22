@@ -174,11 +174,15 @@ jobs:
           }
           const index = await response.json();
           const versions = index.linux64?.versions ?? [];
-          const selected = versions.find((version) =>
-            version.channel === "stable" && version.files?.some((file) => file.type === "standard")
-          );
+          const selected = versions.find((version) => {
+            const chromiumMajor = Number.parseInt(version.chromium_version?.split(".")[0] ?? "0", 10);
+            return version.channel === "stable" &&
+              chromiumMajor > 0 &&
+              chromiumMajor <= 119 &&
+              version.files?.some((file) => file.type === "standard");
+          });
           if (!selected) {
-            throw new Error("could not find a stable Linux x64 standard CEF build");
+            throw new Error("could not find a stable Linux x64 standard CEF build at Chromium 119 or older");
           }
           const file = selected.files.find((candidate) => candidate.type === "standard");
           console.log(`CEF_VERSION=${selected.cef_version}`);
