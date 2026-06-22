@@ -60,17 +60,53 @@ godot::String process_profile_name() {
            "-" + godot::String::num_int64(nonce);
 }
 
+std::u16string utf8_to_utf16(const std::string &bytes) {
+    std::u16string out;
+    out.reserve(bytes.size());
+    for (size_t i = 0; i < bytes.size();) {
+        const auto byte = static_cast<unsigned char>(bytes[i]);
+        uint32_t codepoint = 0xfffd;
+        size_t consumed = 1;
+        if (byte < 0x80) {
+            codepoint = byte;
+        } else if ((byte & 0xe0) == 0xc0 && i + 1 < bytes.size()) {
+            codepoint = ((byte & 0x1f) << 6) |
+                        (static_cast<unsigned char>(bytes[i + 1]) & 0x3f);
+            consumed = 2;
+        } else if ((byte & 0xf0) == 0xe0 && i + 2 < bytes.size()) {
+            codepoint = ((byte & 0x0f) << 12) |
+                        ((static_cast<unsigned char>(bytes[i + 1]) & 0x3f) << 6) |
+                        (static_cast<unsigned char>(bytes[i + 2]) & 0x3f);
+            consumed = 3;
+        } else if ((byte & 0xf8) == 0xf0 && i + 3 < bytes.size()) {
+            codepoint = ((byte & 0x07) << 18) |
+                        ((static_cast<unsigned char>(bytes[i + 1]) & 0x3f) << 12) |
+                        ((static_cast<unsigned char>(bytes[i + 2]) & 0x3f) << 6) |
+                        (static_cast<unsigned char>(bytes[i + 3]) & 0x3f);
+            consumed = 4;
+        }
+
+        if (codepoint <= 0xffff) {
+            out.push_back(static_cast<char16_t>(codepoint));
+        } else {
+            codepoint -= 0x10000;
+            out.push_back(static_cast<char16_t>(0xd800 + (codepoint >> 10)));
+            out.push_back(static_cast<char16_t>(0xdc00 + (codepoint & 0x3ff)));
+        }
+        i += consumed;
+    }
+    return out;
+}
+
 struct CefString {
-    CefString(const cef_api_t &api_ref, const godot::String &value) :
-            api(api_ref) {
+    explicit CefString(const godot::String &value) {
         const std::string bytes = utf8(value);
         if (!bytes.empty()) {
-            api.cef_string_utf8_to_utf16(bytes.c_str(), bytes.size(), &str);
+            storage = utf8_to_utf16(bytes);
+            str.str = reinterpret_cast<char16_t *>(storage.data());
+            str.length = storage.size();
+            str.dtor = nullptr;
         }
-    }
-
-    ~CefString() {
-        api.cef_string_utf16_clear(&str);
     }
 
     CefString(const CefString &) = delete;
@@ -80,8 +116,8 @@ struct CefString {
         return &str;
     }
 
+    std::u16string storage;
     cef_string_t str;
-    const cef_api_t &api;
 };
 
 } // namespace
@@ -383,12 +419,13 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     settings.disable_signal_handlers = 1;
     settings.log_severity = LOGSEVERITY_WARNING;
 
-    CefString subprocess_path(api, runtime_dir.path_join("fennara_cef_helper"));
-    CefString resources_path(api, runtime_dir);
-    CefString locales_path(api, runtime_dir.path_join("locales"));
-    CefString root_cache_path(api, profile_dir);
-    CefString cache_path(api, cache_dir);
-    CefString log_file(api, log_dir.path_join("cef_debug.log"));
+    debug_log("creating caller-owned cef strings");
+    CefString subprocess_path(runtime_dir.path_join("fennara_cef_helper"));
+    CefString resources_path(runtime_dir);
+    CefString locales_path(runtime_dir.path_join("locales"));
+    CefString root_cache_path(profile_dir);
+    CefString cache_path(cache_dir);
+    CefString log_file(log_dir.path_join("cef_debug.log"));
     settings.browser_subprocess_path = subprocess_path.str;
     settings.resources_dir_path = resources_path.str;
     settings.locales_dir_path = locales_path.str;
@@ -442,7 +479,7 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     browser_settings.windowless_frame_rate = 30;
     browser_settings.background_color = 0xffffffff;
 
-    CefString cef_url(api, url);
+    CefString cef_url(url);
     debug_log("calling cef_browser_host_create_browser_sync url=" + url);
     cef->browser = api.cef_browser_host_create_browser_sync(
         &window_info,

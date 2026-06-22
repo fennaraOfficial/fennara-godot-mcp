@@ -90,9 +90,7 @@ std::unique_ptr<capi::cef_api_t> resolve_api(void *handle, godot::String &missin
         !resolve_symbol(handle,
                         "cef_browser_host_create_browser_sync",
                         api->cef_browser_host_create_browser_sync,
-                        missing_name) ||
-        !resolve_symbol(handle, "cef_string_utf8_to_utf16", api->cef_string_utf8_to_utf16, missing_name) ||
-        !resolve_symbol(handle, "cef_string_utf16_clear", api->cef_string_utf16_clear, missing_name)) {
+                        missing_name)) {
         return nullptr;
     }
     return api;

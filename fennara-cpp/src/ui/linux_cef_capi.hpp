@@ -16,8 +16,6 @@ struct cef_api_t {
     decltype(&::cef_shutdown) cef_shutdown = nullptr;
     decltype(&::cef_do_message_loop_work) cef_do_message_loop_work = nullptr;
     decltype(&::cef_browser_host_create_browser_sync) cef_browser_host_create_browser_sync = nullptr;
-    decltype(&::cef_string_utf8_to_utf16) cef_string_utf8_to_utf16 = nullptr;
-    decltype(&::cef_string_utf16_clear) cef_string_utf16_clear = nullptr;
 };
 
 } // namespace fennara::linux_cef_runtime::capi
