@@ -20,7 +20,7 @@ MCP client
 
 | Piece | Where It Lives | What It Does |
 | --- | --- | --- |
-| CLI | `local/crates/fennara-cli/` | Installs the addon into a Godot project, updates local packages, and writes MCP app config. |
+| CLI | `local/crates/fennara-cli/` | Installs the addon into a Godot project, updates local packages, writes project guidance, and configures MCP apps through `fennara mcp-setup`. |
 | MCP launcher | `local/crates/fennara-mcp/` | Stable executable that MCP apps call. It finds the active version and starts the runtime. |
 | MCP runtime | `local/crates/fennara-mcp/` | Speaks MCP over stdio and forwards tool calls to the local bridge. |
 | Daemon launcher | `local/crates/fennara-daemon/` | Stable executable used to start the active daemon runtime. |
@@ -51,8 +51,8 @@ objects (`CefClient`, `CefRenderHandler`, `CefRefPtr`) used to initialize CEF in
 windowless mode, create the browser for the packaged chat URL, and copy paint
 buffers into a Godot texture. Full IME, clipboard, and cursor handling are
 separate follow-up work. The CEF runtime is intentionally separate from the
-Godot addon zip: Linux installs reserve a shared app-data runtime location and
-will install CEF there once the runtime asset is selected.
+Godot addon zip: Linux installs use a shared app-data runtime location and the
+CLI installs the release-managed CEF asset there once per user.
 
 Multiple Godot editors may be open at the same time. Each embedded chat
 websocket is accepted with the owning editor's `chat_token` and remains bound to
@@ -181,8 +181,12 @@ It can update:
 
 - the local CLI/runtime package
 - the project addon
-- MCP app config written by `fennara mcp-setup`
 - generated project guidance in `AGENTS.md` and `.fennara/ai/guidelines.md`
+- shared webview runtime assets needed by the current platform, such as Linux CEF
+
+It does not rewrite MCP app config. Run `fennara mcp-setup` again only when
+adding a new MCP client, repairing that client's config, or changing the MCP
+target app integration itself.
 
 If an MCP app is currently running a launcher, the update may keep that launcher
 and continue. The versioned runtime package is still updated, and future starts
@@ -199,17 +203,18 @@ Each public release publishes separate assets so installs can stay modular:
 
 | Asset | Purpose |
 | --- | --- |
-| `fennara-cli-<platform>-<arch>.zip` | CLI and stable launchers. |
-| `fennara-local-<platform>-<arch>.zip` | Versioned MCP and daemon runtimes. |
+| `fennara-cli-<platform>-<arch>-v<version>.zip` | CLI and stable launchers. |
+| `fennara-local-<platform>-<arch>-v<version>.zip` | Versioned MCP and daemon runtimes. |
 | `fennara-addon-v<version>.zip` / `fennara-addon-latest.zip` | All-platform Godot addon payload with every built GDExtension binary referenced by `fennara.gdextension`. |
+| `fennara-webview-cef-linux-x64-<cef-version>.zip` | Linux-only shared CEF runtime installed once into Fennara app data. |
 
 The moving `latest` release is what normal users should install from. Versioned
 releases such as `v0.2.8` stay available for pinning and debugging.
 
 Linux CEF runtime payloads are not part of `fennara-addon-*`. They are selected
-by `local/webview-runtimes/linux-cef.json` and installed once into the shared
-app-data `webview/cef/linux-x64/<cef-version>/` directory when the manifest has
-a real archive name or URL and checksum.
+by the generated release copy of `local/webview-runtimes/linux-cef.json` and
+installed once into the shared app-data
+`webview/cef/linux-x64/<cef-version>/` directory.
 
 CEF runtime installs stage into a temporary sibling directory, validate required
 files and the runtime marker, then publish the completed version directory and
@@ -223,4 +228,4 @@ already-loaded runtime.
 - Prefer Godot API feedback over file-only guesses.
 - Return concise markdown results that an MCP client can use directly.
 - Keep launchers stable and move changing code into versioned runtimes.
-- Avoid cloud, account, and API-key requirements in the OSS path.
+- Keep the external MCP path local. The optional built-in chat dock uses the user's own OpenRouter API key and stores it locally through the daemon.

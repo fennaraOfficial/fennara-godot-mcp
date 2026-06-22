@@ -69,16 +69,16 @@ This is the quick map for contributors and coding agents working in this reposit
 | `scripts/set-version.mjs` | Updates versioned files across the repo. |
 | `scripts/check-version.mjs` | Checks version sync. |
 | `scripts/sync-chat-ui.mjs` | Copies the buildless chat UI source into the addon payload. |
-| `scripts/package-preview.mjs` | Assembles addon, CLI, and local runtime release zips. |
-| `scripts/prepare-linux-cef-runtime.mjs` | Manually assembles the separate Linux x64 CEF runtime zip from a maintainer-selected CEF binary tree. |
+| `scripts/package-preview.mjs` | Assembles addon, CLI, and local runtime preview/release zips after platform builds. |
+| `scripts/prepare-linux-cef-runtime.mjs` | Stages the separate Linux x64 CEF runtime zip, strips staged ELF binaries, validates required files, and can write the generated release manifest. |
 | `scripts/prepare-linux-cef-sdk.mjs` | Downloads and extracts the pinned official CEF 139 Linux minimal SDK for CI builds that need `libcef_dll/` wrapper source. |
-| `scripts/check-linux-cef-runtime-release.mjs` | Validates the optional Linux CEF runtime release asset against `local/webview-runtimes/linux-cef.json`. |
+| `scripts/check-linux-cef-runtime-release.mjs` | Validates the Linux CEF runtime release asset against the generated `local/webview-runtimes/linux-cef.json` manifest. |
 | `scripts/cef/linux/fennara_cef_helper.cpp` | Minimal Linux CEF subprocess helper source packaged inside the separate CEF runtime zip. |
 | `.github/workflows/version-check.yml` | Version consistency check. |
 | `.github/workflows/gdextension-build.yml` | GDExtension build check. |
 | `.github/workflows/local-build.yml` | Rust local package build check. |
-| `.github/workflows/package-preview.yml` | Manual package preview artifacts. |
-| `.github/workflows/release.yml` | Manual GitHub release publishing, including optional Linux CEF runtime asset validation when enabled. |
+| `.github/workflows/package-preview.yml` | Manual package preview artifacts, including a test-only Linux CEF runtime artifact for Linux chat smoke tests. |
+| `.github/workflows/release.yml` | Manual GitHub release publishing, including generated Linux CEF runtime packaging, generated manifest propagation, and final asset validation. |
 
 ## Where To Change Things
 

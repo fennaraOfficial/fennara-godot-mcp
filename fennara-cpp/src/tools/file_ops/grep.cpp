@@ -13,19 +13,50 @@ namespace fennara::file_ops {
 
 namespace {
 
+godot::String bundled_rg_name() {
+#if defined(_WIN32) || defined(_WIN64) || defined(WINDOWS_ENABLED)
+    return "rg-windows-x86_64.exe";
+#elif defined(__APPLE__)
+#if defined(__aarch64__) || defined(__arm64__)
+    return "rg-macos-arm64";
+#else
+    return "rg-macos-x86_64";
+#endif
+#elif defined(__linux__)
+#if defined(__aarch64__) || defined(__arm64__)
+    return "rg-linux-arm64";
+#else
+    return "rg-linux-x86_64";
+#endif
+#else
+    return "rg";
+#endif
+}
+
+godot::String legacy_rg_name() {
+#if defined(_WIN32) || defined(_WIN64) || defined(WINDOWS_ENABLED)
+    return "rg.exe";
+#else
+    return "rg";
+#endif
+}
+
 }
 
 // Resolve the bundled ripgrep binary path.
 static godot::String get_rg_path() {
-    godot::String res_path = "res://addons/fennara/bin/rg";
+    godot::ProjectSettings *settings = godot::ProjectSettings::get_singleton();
+    godot::String res_path = "res://addons/fennara/bin/" + bundled_rg_name();
+    godot::String path = settings->globalize_path(res_path);
 
-#ifdef WINDOWS_ENABLED
-    res_path += ".exe";
-#elif defined(_WIN32) || defined(_WIN64)
-    res_path += ".exe";
-#endif
+    godot::Array output;
+    int exit_code = godot::OS::get_singleton()->execute(
+        path, godot::PackedStringArray({"--version"}), output);
+    if (exit_code == 0) {
+        return path;
+    }
 
-    return godot::ProjectSettings::get_singleton()->globalize_path(res_path);
+    return settings->globalize_path("res://addons/fennara/bin/" + legacy_rg_name());
 }
 
 // Check if ripgrep binary exists and is executable.
@@ -344,7 +375,7 @@ godot::Dictionary rg(const godot::Dictionary &op, godot::Array &warnings,
     if (!rg_available()) {
         godot::String msg =
             "ripgrep (rg) not found at: " + rg_path +
-            ". Ensure rg binary is in addons/fennara/bin/";
+            ". Ensure the platform ripgrep binary is in addons/fennara/bin/.";
         errors.append(msg);
         result["success"] = false;
         result["error"] = msg;

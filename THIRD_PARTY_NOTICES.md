@@ -39,7 +39,7 @@ CEF is distributed under a BSD-style license. See `fennara-cpp/vendor/cef/LICENS
 
 ## ripgrep
 
-The Windows preview addon payload includes `rg.exe`, the ripgrep command-line search tool.
+The addon payload includes platform-specific `rg` binaries for project search.
 
 Project: https://github.com/BurntSushi/ripgrep
 

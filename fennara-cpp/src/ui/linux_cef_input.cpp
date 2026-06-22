@@ -40,6 +40,46 @@ uint32_t modifier_flags(const godot::InputEventWithModifiers *event) {
     return flags;
 }
 
+uint32_t modifier_state_flags(const KeyboardState &state) {
+    uint32_t flags = FENNARA_CEF_EVENTFLAG_NONE;
+    if (state.shift_down) {
+        flags |= FENNARA_CEF_EVENTFLAG_SHIFT_DOWN;
+    }
+    if (state.ctrl_down) {
+        flags |= FENNARA_CEF_EVENTFLAG_CONTROL_DOWN;
+    }
+    if (state.alt_down) {
+        flags |= FENNARA_CEF_EVENTFLAG_ALT_DOWN;
+    }
+    if (state.meta_down) {
+        flags |= FENNARA_CEF_EVENTFLAG_COMMAND_DOWN;
+    }
+    return flags;
+}
+
+void update_modifier_state(const godot::InputEventKey *event, KeyboardState &state) {
+    if (event == nullptr || event->is_echo()) {
+        return;
+    }
+    const bool pressed = event->is_pressed();
+    switch (event->get_keycode()) {
+        case godot::KEY_SHIFT:
+            state.shift_down = pressed;
+            break;
+        case godot::KEY_CTRL:
+            state.ctrl_down = pressed;
+            break;
+        case godot::KEY_ALT:
+            state.alt_down = pressed;
+            break;
+        case godot::KEY_META:
+            state.meta_down = pressed;
+            break;
+        default:
+            break;
+    }
+}
+
 uint32_t mouse_button_flags(const godot::InputEventMouse *event) {
     uint32_t flags = modifier_flags(event);
     if (event == nullptr) {
@@ -207,6 +247,7 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
                   int width,
                   int height,
                   MouseState &mouse_state,
+                  KeyboardState &keyboard_state,
                   bool &request_focus) {
     request_focus = false;
     if (event.is_null() || api == nullptr || browser == nullptr) {
@@ -264,6 +305,7 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
             return false;
         }
 
+        update_modifier_state(key, keyboard_state);
         const int windows_code = windows_key_code(key->get_keycode());
         const char16_t character = cef_character(key->get_unicode());
         if (windows_code == 0 && character == 0) {
@@ -272,7 +314,7 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
 
         fennara_cef_bridge_key_event key_event{};
         key_event.type = key->is_pressed() ? FENNARA_CEF_KEYEVENT_RAWKEYDOWN : FENNARA_CEF_KEYEVENT_KEYUP;
-        key_event.modifiers = modifier_flags(key);
+        key_event.modifiers = modifier_flags(key) | modifier_state_flags(keyboard_state);
         if (key->is_echo()) {
             key_event.modifiers |= FENNARA_CEF_EVENTFLAG_IS_REPEAT;
         }

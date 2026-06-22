@@ -87,18 +87,21 @@ When searching for Fennara MCP tools through a tool-search system, search for al
 Use this query:
 
 ```text
-fennara_status write_or_update_file run_scene_edit_script get_scene_tree save_custom_resource script_diagnostics screenshot_scene get_node_properties get_class_info validate_scene project_settings runtime_session runtime_script scrape_editor
+fennara_status read_file file_ops write_or_update_file run_scene_edit_script get_scene_tree save_custom_resource script_diagnostics screenshot_scene get_node_properties get_class_info validate_scene project_settings runtime_session runtime_script scrape_editor
 ```
 
 If the search tool has a `limit` option, set it to `20` or higher. Do this even when you only need one specific tool, because low result limits can bury relevant Fennara tools below the cutoff.
 
 After the search returns, read the returned tool schemas before calling any tool. If `fennara_status` reports that a tool exists but the callable schema is not exposed yet, retry tool discovery with the exact tool name, the full query above, and a high limit.
 
-## Fennara MCP Does Not Replace Normal File Reading
+## Fennara MCP Does Not Replace Normal Repository Navigation
 
-Fennara MCP intentionally does not expose broad file-reading tools like `read_file`.
+Fennara MCP includes scoped `read_file` and `file_ops` helpers for cases where
+Godot-side path normalization, image handling, or bundled ripgrep search is
+useful.
 
-Use your MCP app's own file tools for ordinary file reading, diffs, repository navigation, and non-Godot text inspection.
+Use your MCP app's own file tools for broad ordinary file reading, diffs,
+repository navigation, and non-Godot text inspection.
 
 Use Fennara MCP for Godot-aware work: inspecting scene trees, node properties, native Godot APIs, runtime errors, editor debugger snapshots, diagnostics, validation, screenshots, and project settings.
 

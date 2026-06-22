@@ -37,6 +37,7 @@ function packageAddonPart() {
     }
     return true;
   });
+  bundleRipgrep(target);
   assertNoBundledCef(target);
 
   return path.dirname(path.dirname(target));
@@ -117,6 +118,64 @@ function isAddonBinary(relative) {
     );
   }
   throw new Error(`Unsupported platform: ${platform}`);
+}
+
+function bundleRipgrep(addonRoot) {
+  const source = findRipgrep();
+  const target = path.join(addonRoot, "bin", ripgrepBinaryName());
+  copyFile(source, target);
+  if (platform !== "windows") {
+    chmodExecutable(target);
+  }
+  console.log(`Bundled ${path.relative(root, target)}`);
+}
+
+function ripgrepBinaryName() {
+  if (platform === "windows") {
+    return `rg-${platform}-${arch}.exe`;
+  }
+  return `rg-${platform}-${arch}`;
+}
+
+function findRipgrep() {
+  if (process.env.FENNARA_RIPGREP_PATH) {
+    const configured = path.resolve(process.env.FENNARA_RIPGREP_PATH);
+    if (!exists(configured)) {
+      throw new Error(`FENNARA_RIPGREP_PATH does not exist: ${configured}`);
+    }
+    return configured;
+  }
+
+  if (platform === "windows") {
+    return commandPath("where.exe", ["rg.exe"], "rg.exe");
+  }
+  return commandPath("sh", ["-c", "command -v rg"], "rg");
+}
+
+function commandPath(command, commandArgs, label) {
+  const result = spawnSync(command, commandArgs, {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error(`Could not find ${label}. Install ripgrep before packaging.`);
+  }
+
+  const found = result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+  if (!found || !exists(found)) {
+    throw new Error(`Could not resolve ${label} path from command output.`);
+  }
+  return found;
+}
+
+function chmodExecutable(filePath) {
+  const result = spawnSync("chmod", ["755", filePath], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`Failed to mark ${path.relative(root, filePath)} executable.`);
+  }
 }
 
 function zipDirectory(sourceDir, archivePath) {

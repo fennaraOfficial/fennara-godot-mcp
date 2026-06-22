@@ -66,7 +66,16 @@ jobs:
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential bzip2 pkg-config
+        run: sudo apt-get update && sudo apt-get install -y build-essential bzip2 pkg-config ripgrep
+
+      - name: Install Windows ripgrep
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: choco install ripgrep -y --no-progress
+
+      - name: Install macOS ripgrep
+        if: matrix.platform == 'macos'
+        run: brew install ripgrep
 
       - name: Prepare Linux CEF SDK
         if: matrix.platform == 'linux'

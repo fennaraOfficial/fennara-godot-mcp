@@ -79,14 +79,18 @@ chat CEF runtime:
 
 The CEF browser payload is installed once per user and shared across Godot
 projects/editors. It is not copied into `addons/fennara`. The Linux chat dock
-renders through that shared runtime when it is present; until the CEF runtime
-asset is selected, `fennara install`, `fennara update`, and `fennara doctor`
-report the reserved layout instead of downloading a placeholder.
+renders through that shared runtime when it is present. Release builds provide
+the matching CEF runtime manifest and asset; `fennara install`, `fennara update`,
+and `fennara doctor --repair` validate or repair the shared runtime layout.
 
 The shared CEF runtime directory is read-only during normal browser use. Each
 open Godot editor gets its own writable CEF profile/cache/log directories under
 the Fennara app-data `cache/webview/profiles/cef/` and `logs/webview/cef/`
 roots, so multiple editors can keep embedded chat open at the same time.
+
+The built-in chat requires your own [OpenRouter API key](https://openrouter.ai/keys).
+Paste it into the Fennara chat settings inside Godot. The daemon stores it
+locally outside the Godot project.
 
 ## 3. Configure Your MCP App
 

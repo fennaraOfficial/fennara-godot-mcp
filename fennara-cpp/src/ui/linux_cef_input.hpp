@@ -16,6 +16,13 @@ struct MouseState {
     int last_y = 0;
 };
 
+struct KeyboardState {
+    bool shift_down = false;
+    bool ctrl_down = false;
+    bool alt_down = false;
+    bool meta_down = false;
+};
+
 bool handle_input(const godot::Ref<godot::InputEvent> &event,
                   const fennara_cef_bridge_api *api,
                   fennara_cef_bridge_browser *browser,
@@ -23,6 +30,7 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
                   int width,
                   int height,
                   MouseState &mouse_state,
+                  KeyboardState &keyboard_state,
                   bool &request_focus);
 
 void notify_mouse_leave(const fennara_cef_bridge_api *api,

@@ -30,6 +30,7 @@ Linux:
 ```text
 fennara-cli-linux-x86_64-v<version>.zip
 fennara-local-linux-x86_64-v<version>.zip
+fennara-webview-cef-linux-x64-<cef-version>.zip
 ```
 
 macOS:
@@ -118,9 +119,75 @@ On Windows, the binaries use `.exe`.
 `current.json` points the launcher binaries to the active runtime version. The normal `fennara install` and `fennara update` commands create this file automatically.
 
 Linux embedded chat uses the shared `webview/cef/linux-x64/<cef-version>/`
-runtime location when the CEF asset is installed. Keep that payload outside the
-Godot project addon; `addons/fennara` should not contain `libcef.so` or other
-CEF runtime files.
+runtime location. Normal `fennara install` / `fennara update` runs install the
+release-managed CEF runtime automatically from the release manifest and asset.
+If you are installing everything by hand, extract
+`fennara-webview-cef-linux-x64-<cef-version>.zip` into that shared runtime
+location and write the matching `webview/cef/linux-x64/current.json` marker.
+Keep that payload outside the Godot project addon; `addons/fennara` should not
+contain `libcef.so` or other CEF runtime files.
+
+The final Linux CEF layout should look like this:
+
+```text
+~/.local/share/fennara/
+  webview/
+    cef/
+      linux-x64/
+        current.json
+        <cef-version>/
+          fennara-cef-runtime.json
+          libcef.so
+          fennara_cef_helper
+          icudtl.dat
+          resources.pak
+          locales/
+            en-US.pak
+```
+
+`webview/cef/linux-x64/current.json` must be:
+
+```json
+{
+  "runtime": "cef",
+  "platform": "linux",
+  "platform_arch": "linux-x64",
+  "version": "<cef-version>",
+  "dir": "<cef-version>"
+}
+```
+
+`webview/cef/linux-x64/<cef-version>/fennara-cef-runtime.json` must be the
+matching release manifest for the CEF asset, for example:
+
+```json
+{
+  "schema_version": 1,
+  "runtime": "cef",
+  "platform": "linux",
+  "arch": "x86_64",
+  "platform_arch": "linux-x64",
+  "version": "<cef-version>",
+  "enabled": true,
+  "layout": "webview/cef/linux-x64/<cef-version> with webview/cef/linux-x64/current.json pointing at the selected version",
+  "required_files": [
+    "libcef.so",
+    "fennara_cef_helper",
+    "icudtl.dat",
+    "resources.pak",
+    "chrome_100_percent.pak",
+    "chrome_200_percent.pak",
+    "v8_context_snapshot.bin",
+    "locales/en-US.pak"
+  ],
+  "archive": {
+    "format": "zip",
+    "name": "fennara-webview-cef-linux-x64-<cef-version>.zip",
+    "url": null,
+    "sha256": "<sha256>"
+  }
+}
+```
 
 Do not put writable browser state inside the CEF version directory. Normal use
 writes per-editor profiles and logs under the Fennara app-data cache/log roots,

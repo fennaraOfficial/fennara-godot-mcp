@@ -7,6 +7,29 @@ Fennara gives MCP clients a live connection to Godot. Agents can inspect scenes,
 
 It is built for Godot projects where file edits are not enough. Node paths, exported variables, scene resources, runtime logs, screenshots, and editor diagnostics all matter.
 
+Fennara also includes an in-editor chat dock backed by the same local daemon. The chat can use project-aware tools, show the active MCP target, store its OpenRouter key locally, and attach image context when supported by the selected model.
+
+The built-in chat requires your own [OpenRouter](https://openrouter.ai/) API key. Create a key from [OpenRouter Keys](https://openrouter.ai/keys), then paste it into the Fennara chat settings inside Godot. Fennara stores that key locally through the daemon and does not put it in the Godot project. MCP clients can still use Fennara's tools through their own model/app setup.
+
+## Requirements
+
+- Godot 4.5 or newer.
+- A supported desktop OS: Windows x86_64, Linux x86_64, or macOS arm64.
+- An MCP-capable coding app such as Claude, Codex, Cursor, Gemini, or Antigravity.
+- An [OpenRouter API key](https://openrouter.ai/keys) only if you want to use the built-in Fennara chat dock.
+
+For the full install walkthrough, see [Setup](docs/setup.md).
+
+## What Fennara Installs
+
+- a small `fennara` CLI
+- a local MCP server used by AI coding apps
+- a local daemon that bridges MCP/chat requests to the open Godot editor
+- a Godot addon copied into `res://addons/fennara/`
+- generated project guidance for AI agents
+
+On Linux, the embedded chat webview uses a shared CEF runtime installed once under the user's Fennara app-data directory. The CEF runtime is separate from the Godot addon so every project does not carry a browser engine copy.
+
 ## Quick Start
 
 Follow these steps in order.
@@ -99,6 +122,8 @@ Use Fennara MCP to run fennara_status and tell me which Godot project is connect
 
 If the project path is correct, the MCP server and Godot plugin are talking.
 
+If more than one Godot project is open, use the Fennara dock's MCP target control to choose which project receives external MCP tool calls.
+
 ### 5. Update Later
 
 Run this from the Godot project folder:
@@ -108,7 +133,7 @@ cd path/to/your-godot-project
 fennara update
 ```
 
-`fennara update` refreshes the project addon, local runtime package, and generated Fennara guidance files for the current release.
+`fennara update` refreshes the project addon, local runtime package, generated Fennara guidance files, and any release-managed shared webview runtime needed by the current platform.
 
 ## Tools
 
@@ -123,6 +148,16 @@ Fennara exposes a small set of Godot-aware tools:
 - run small runtime scripts against a live scene
 
 The goal is not to replace an agent's normal file tools. Fennara gives the missing Godot feedback loop.
+
+## Built-In Chat
+
+The Fennara dock includes a native web chat surface inside Godot. It talks to the local daemon, not a hosted Fennara backend.
+
+- Bring your own [OpenRouter API key](https://openrouter.ai/keys) for built-in chat.
+- OpenRouter API keys are saved locally by the daemon, outside the Godot project.
+- Chat history is stored locally and scoped to the current project.
+- Image attachments can be pasted or selected from the composer and sent as model context when the selected OpenRouter model supports vision.
+- The dock shows whether the current project is the MCP target for external MCP clients.
 
 ## Demos
 
@@ -139,12 +174,25 @@ More videos:
 
 See [Demos](docs/demos.md) for more videos from the Fennara channel.
 
+## Star History
+
+<a href="https://www.star-history.com/#fennaraOfficial/fennara-godot-mcp&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fennaraOfficial/fennara-godot-mcp&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fennaraOfficial/fennara-godot-mcp&type=Date" />
+    <img alt="Fennara Godot MCP Star History" src="https://api.star-history.com/svg?repos=fennaraOfficial/fennara-godot-mcp&type=Date" />
+  </picture>
+</a>
+
 ## Repository
 
 Useful starting points:
 
+- [Setup](docs/setup.md)
 - [Repo map](docs/repo-map.md)
 - [Architecture](docs/architecture.md)
+- [Tools](docs/tools.md)
+- [FAQ](docs/faq.md)
 - [Demos](docs/demos.md)
 - [Manual install notes](docs/manual-install.md)
 - [Release process](docs/release.md)

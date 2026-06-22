@@ -84,6 +84,7 @@ struct LinuxCefOsrWebview::CefObjects {
     bool hidden = false;
     bool dirty = false;
     input::MouseState mouse_state;
+    input::KeyboardState keyboard_state;
 
     const fennara_cef_bridge_api *api() const {
         return bridge.api();
@@ -369,7 +370,15 @@ bool LinuxCefOsrWebview::handle_input(const godot::Ref<godot::InputEvent> &event
 
     bool request_focus = false;
     godot::TextureRect *texture_rect = current_texture_rect();
-    const bool handled = input::handle_input(event, api, cef->browser, texture_rect, cef->width, cef->height, cef->mouse_state, request_focus);
+    const bool handled = input::handle_input(event,
+                                            api,
+                                            cef->browser,
+                                            texture_rect,
+                                            cef->width,
+                                            cef->height,
+                                            cef->mouse_state,
+                                            cef->keyboard_state,
+                                            request_focus);
     if (request_focus) {
         set_focused(true);
     }

@@ -75,7 +75,6 @@ Inputs:
 ```text
 version: 0.2.9
 promote_latest: true
-linux_cef_runtime_url: <empty unless local/webview-runtimes/linux-cef.json is enabled>
 ```
 
 The `version` input must match `VERSION`.
@@ -85,14 +84,17 @@ The workflow publishes:
 - `v<version>`
 - `latest` when `promote_latest` is true
 
-When `local/webview-runtimes/linux-cef.json` has `enabled: true`, the release
-workflow also requires a prebuilt Linux CEF runtime zip. Pass its download URL
-as `linux_cef_runtime_url`; the workflow downloads it, verifies the name and
-SHA-256 from the manifest, and attaches it to both `v<version>` and `latest`.
-Pull request workflows do not publish CEF. The Package Preview workflow creates
-a separate test-only Linux CEF runtime artifact from the pinned official CEF 139
-Linux minimal archive unless `linux_cef_runtime_url` points to another official
-CEF tarball or a prebuilt Fennara CEF runtime zip.
+The release workflow prepares the Linux CEF runtime before platform packaging.
+It downloads the pinned official CEF 139 Linux minimal SDK, assembles the
+separate `fennara-webview-cef-linux-x64-<cef-version>.zip`, strips staged ELF
+binaries, writes a generated enabled `local/webview-runtimes/linux-cef.json`
+manifest, and feeds that manifest into the CLI packages. The publish job then
+validates that the release assets include the exact CEF zip named by the
+generated manifest and that its SHA-256 matches.
+
+Pull request workflows do not publish releases. The Package Preview workflow
+creates test artifacts for Linux CEF so maintainers can smoke-test embedded chat
+before merging, but Package Preview is not the user-facing release channel.
 
 ## Release Assets
 
@@ -126,19 +128,27 @@ fennara-addon-v<version>.zip
 fennara-addon-latest.zip
 ```
 
+Linux webview runtime:
+
+```text
+fennara-webview-cef-linux-x64-<cef-version>.zip
+```
+
 Package roles:
 
 - `fennara-cli-*`: install script payload; contains only the `fennara` CLI for one platform.
 - `fennara-local-*`: local MCP and daemon launchers plus versioned runtime binaries for one platform.
 - `fennara-addon-v*`: versioned all-platform Godot addon payload copied into projects by the CLI.
 - `fennara-addon-latest.zip`: stable all-platform addon URL for the Godot Asset Library and docs links.
+- `fennara-webview-cef-linux-x64-*`: Linux-only shared CEF runtime installed once into Fennara app data by the CLI.
 
 The shared addon zip contains every built GDExtension binary referenced by `godot/addons/fennara/fennara.gdextension`. Godot loads the matching library for the user's OS and ignores the others.
 
-Linux CEF webview runtime payloads are separate from the addon archive. The
-runtime manifest lives at `local/webview-runtimes/linux-cef.json`; when it is
-filled with a real archive name or URL and SHA-256, the CLI installs that CEF
-payload once under the user's Fennara app-data directory:
+Linux CEF webview runtime payloads are separate from the addon archive. Release
+packaging generates the enabled runtime manifest at
+`local/webview-runtimes/linux-cef.json`; the Linux CLI package embeds that
+manifest and installs the matching CEF payload once under the user's Fennara
+app-data directory:
 
 ```text
 webview/cef/linux-x64/<cef-version>/
@@ -146,8 +156,8 @@ webview/cef/linux-x64/<cef-version>/
 
 Do not place `libcef.so`, CEF helper executables, CEF resources, or locale packs
 inside `fennara-addon-*`. Package Preview may build a separate CEF artifact for
-testing, but release publishing still requires an explicit maintainer-selected
-runtime asset and manifest checksum.
+testing, but release publishing owns the generated runtime asset and manifest
+checksum.
 
 Linux GDExtension builds also need the official CEF SDK wrapper source, but not
 the CEF runtime files in the addon. CI runs:
@@ -189,7 +199,7 @@ Optional CEF runtime files such as `chrome-sandbox`, `libEGL.so`,
 `vk_swiftshader_icd.json`, `snapshot_blob.bin`, and additional `locales/*.pak`
 should be included when present in the selected CEF distribution.
 
-To assemble the runtime zip from a maintainer-selected CEF binary tree:
+To assemble the runtime zip manually from a maintainer-selected CEF binary tree:
 
 ```bash
 node scripts/prepare-linux-cef-runtime.mjs \
@@ -220,10 +230,12 @@ After the script prints the SHA-256, update
 }
 ```
 
-Do not enable the manifest until the exact zip bytes have been produced,
-hashed, attached to the release, and smoke-tested on Linux. If the manifest is
-enabled but the release asset is missing or the SHA-256 does not match, the
-Release workflow and Linux `fennara install` / `fennara update` fail clearly.
+For normal releases, the workflow writes this manifest automatically with
+`--write-manifest` and uses the generated copy when building the CLI packages.
+Do not hand-enable the checked-in placeholder manifest unless intentionally
+debugging a manual runtime asset path. If the generated manifest points at an
+asset that is missing or whose SHA-256 does not match, the Release workflow and
+Linux `fennara install` / `fennara update` fail clearly.
 
 The CLI must publish Linux CEF runtime updates atomically: extract and validate
 in a staging directory, write the runtime marker only after required files are

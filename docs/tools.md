@@ -10,11 +10,13 @@ When installed into a project, Fennara writes `.fennara/ai/guidelines.md` and a
 generated Fennara block in `AGENTS.md`. Agents should read that project guidance
 before doing Godot-specific work.
 
-## Tool List
+## External MCP Tools
 
 | Tool | Use It For |
 | --- | --- |
 | `fennara_status` | Check which Godot project is connected and whether the local bridge is reachable. |
+| `read_file` | Read project-scoped files and selected image files through Godot-side path normalization. |
+| `file_ops` | List, glob, search with bundled ripgrep, and perform scoped copy/move/delete/create-dir file operations. |
 | `get_scene_tree` | Inspect scene node structure before using node paths. |
 | `get_node_properties` | Read changed node/resource properties in a scene. |
 | `get_class_info` | Look up real Godot class APIs before writing scene edit scripts. |
@@ -28,6 +30,23 @@ before doing Godot-specific work.
 | `runtime_session` | Start, inspect, or stop a managed running scene. |
 | `runtime_script` | Run a small probe or input-driver script inside a managed runtime session. |
 | `scrape_editor` | Read the Godot editor debugger when the user manually ran a scene. |
+
+These are the tools exposed to external MCP clients through the local
+`fennara-mcp` process.
+
+## Built-In Chat Tool Use
+
+The in-editor Fennara chat uses the same local daemon and can call the same
+Godot-side tools, including `read_file` and `file_ops`.
+
+The difference is presentation, not tool identity. External MCP clients receive
+compact markdown tool results over MCP. The built-in chat may add UI-specific
+handling around the same raw results, such as showing image previews from
+`read_file`, collapsing large output, or attaching screenshots/image context to
+the model request.
+
+External MCP clients should still prefer their own normal file tools for broad
+repository reading/search when Godot feedback is not needed.
 
 ## Normal Workflow
 
