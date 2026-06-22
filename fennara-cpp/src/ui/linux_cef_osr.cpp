@@ -34,6 +34,10 @@ std::string utf8(const godot::String &value) {
     return value.utf8().get_data();
 }
 
+void debug_log(const godot::String &message) {
+    webview_backend::output_log("Web chat Linux CEF OSR: " + message);
+}
+
 int clamp_dimension(double value) {
     return std::max(kMinimumDimension, static_cast<int>(value));
 }
@@ -80,40 +84,12 @@ struct CefString {
     const cef_api_t &api;
 };
 
-void base_add_ref(cef_base_ref_counted_t *base) {
-    (void)base;
-}
-
-int base_release(cef_base_ref_counted_t *base) {
-    (void)base;
-    return 0;
-}
-
-int base_has_one_ref(cef_base_ref_counted_t *base) {
-    (void)base;
-    return 1;
-}
-
-int base_has_at_least_one_ref(cef_base_ref_counted_t *base) {
-    (void)base;
-    return 1;
-}
-
-cef_base_ref_counted_t make_base(size_t size) {
-    cef_base_ref_counted_t base{};
-    base.size = size;
-    base.add_ref = base_add_ref;
-    base.release = base_release;
-    base.has_one_ref = base_has_one_ref;
-    base.has_at_least_one_ref = base_has_at_least_one_ref;
-    return base;
-}
-
 } // namespace
 
 struct LinuxCefOsrWebview::CefObjects {
     struct RenderHandler {
         cef_render_handler_t handler{};
+        std::atomic<int> ref_count{1};
         std::mutex mutex;
         std::vector<uint8_t> rgba;
         int width = 1;
@@ -123,7 +99,11 @@ struct LinuxCefOsrWebview::CefObjects {
         bool dirty = false;
 
         RenderHandler() {
-            handler.base = make_base(sizeof(cef_render_handler_t));
+            handler.base.size = sizeof(cef_render_handler_t);
+            handler.base.add_ref = add_ref;
+            handler.base.release = release;
+            handler.base.has_one_ref = has_one_ref;
+            handler.base.has_at_least_one_ref = has_at_least_one_ref;
             handler.get_view_rect = get_view_rect;
             handler.on_paint = on_paint;
         }
@@ -150,6 +130,33 @@ struct LinuxCefOsrWebview::CefObjects {
             return reinterpret_cast<RenderHandler *>(handler_ptr);
         }
 
+        static RenderHandler *from_base(cef_base_ref_counted_t *base) {
+            return reinterpret_cast<RenderHandler *>(base);
+        }
+
+        static void add_ref(cef_base_ref_counted_t *base) {
+            const int next = from_base(base)->ref_count.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (next <= 3) {
+                debug_log("render_handler add_ref count=" + godot::String::num_int64(next));
+            }
+        }
+
+        static int release(cef_base_ref_counted_t *base) {
+            const int previous = from_base(base)->ref_count.fetch_sub(1, std::memory_order_acq_rel);
+            if (previous <= 3) {
+                debug_log("render_handler release count=" + godot::String::num_int64(previous - 1));
+            }
+            return previous == 1 ? 1 : 0;
+        }
+
+        static int has_one_ref(cef_base_ref_counted_t *base) {
+            return from_base(base)->ref_count.load(std::memory_order_acquire) == 1 ? 1 : 0;
+        }
+
+        static int has_at_least_one_ref(cef_base_ref_counted_t *base) {
+            return from_base(base)->ref_count.load(std::memory_order_acquire) > 0 ? 1 : 0;
+        }
+
         static void get_view_rect(cef_render_handler_t *self,
                                   cef_browser_t *browser,
                                   cef_rect_t *rect) {
@@ -163,6 +170,13 @@ struct LinuxCefOsrWebview::CefObjects {
             rect->y = 0;
             rect->width = owner->width;
             rect->height = owner->height;
+            static std::atomic<int> log_count{0};
+            const int count = log_count.fetch_add(1, std::memory_order_relaxed);
+            if (count < 5) {
+                debug_log("render_handler get_view_rect " +
+                          godot::String::num_int64(rect->width) + "x" +
+                          godot::String::num_int64(rect->height));
+            }
         }
 
         static void on_paint(cef_render_handler_t *self,
@@ -178,6 +192,15 @@ struct LinuxCefOsrWebview::CefObjects {
             (void)dirty_rects;
             if (type != PET_VIEW || buffer == nullptr || width <= 0 || height <= 0) {
                 return;
+            }
+
+            static std::atomic<int> paint_log_count{0};
+            const int paint_count = paint_log_count.fetch_add(1, std::memory_order_relaxed);
+            if (paint_count < 5) {
+                debug_log("render_handler on_paint " +
+                          godot::String::num_int64(width) + "x" +
+                          godot::String::num_int64(height) +
+                          " dirty_rects=" + godot::String::num_int64(static_cast<int64_t>(dirty_rects_count)));
             }
 
             RenderHandler *owner = from(self);
@@ -201,11 +224,16 @@ struct LinuxCefOsrWebview::CefObjects {
 
     struct Client {
         cef_client_t client{};
+        std::atomic<int> ref_count{1};
         RenderHandler *render_handler = nullptr;
 
         explicit Client(RenderHandler *handler) :
                 render_handler(handler) {
-            client.base = make_base(sizeof(cef_client_t));
+            client.base.size = sizeof(cef_client_t);
+            client.base.add_ref = add_ref;
+            client.base.release = release;
+            client.base.has_one_ref = has_one_ref;
+            client.base.has_at_least_one_ref = has_at_least_one_ref;
             client.get_render_handler = get_render_handler;
         }
 
@@ -213,8 +241,39 @@ struct LinuxCefOsrWebview::CefObjects {
             return reinterpret_cast<Client *>(client_ptr);
         }
 
+        static Client *from_base(cef_base_ref_counted_t *base) {
+            return reinterpret_cast<Client *>(base);
+        }
+
+        static void add_ref(cef_base_ref_counted_t *base) {
+            const int next = from_base(base)->ref_count.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (next <= 3) {
+                debug_log("client add_ref count=" + godot::String::num_int64(next));
+            }
+        }
+
+        static int release(cef_base_ref_counted_t *base) {
+            const int previous = from_base(base)->ref_count.fetch_sub(1, std::memory_order_acq_rel);
+            if (previous <= 3) {
+                debug_log("client release count=" + godot::String::num_int64(previous - 1));
+            }
+            return previous == 1 ? 1 : 0;
+        }
+
+        static int has_one_ref(cef_base_ref_counted_t *base) {
+            return from_base(base)->ref_count.load(std::memory_order_acquire) == 1 ? 1 : 0;
+        }
+
+        static int has_at_least_one_ref(cef_base_ref_counted_t *base) {
+            return from_base(base)->ref_count.load(std::memory_order_acquire) > 0 ? 1 : 0;
+        }
+
         static cef_render_handler_t *get_render_handler(cef_client_t *self) {
             Client *owner = from(self);
+            static std::atomic<bool> logged{false};
+            if (!logged.exchange(true, std::memory_order_relaxed)) {
+                debug_log("client get_render_handler");
+            }
             return owner->render_handler != nullptr ? &owner->render_handler->handler : nullptr;
         }
     };
@@ -287,7 +346,11 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     }
 
     create_control();
+    debug_log("start requested owner_size=" +
+              godot::String::num(owner->get_size().x) + "x" +
+              godot::String::num(owner->get_size().y));
     cef = std::make_unique<CefObjects>();
+    debug_log("loading shared runtime");
     cef->runtime = linux_cef_runtime::load();
     if (!cef->runtime.ok()) {
         webview_backend::output_error("Web chat Linux CEF loader unavailable: " + cef->runtime.status.message);
@@ -296,6 +359,9 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     }
 
     const godot::String runtime_dir = cef->runtime.status.runtime_dir;
+    debug_log("runtime ready version=" + cef->runtime.status.version +
+              " dir=" + runtime_dir +
+              " lib=" + cef->runtime.status.libcef_path);
     const godot::String session_name = process_profile_name();
     const godot::String profile_dir =
         fennara::app_paths::webview_profile_dir().path_join("cef").path_join(session_name);
@@ -305,6 +371,9 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     ensure_dir(profile_dir);
     ensure_dir(cache_dir);
     ensure_dir(log_dir);
+    debug_log("profile=" + profile_dir);
+    debug_log("cache=" + cache_dir);
+    debug_log("log=" + log_dir);
 
     const cef_api_t &api = cef->api();
     cef_settings_t settings{};
@@ -326,30 +395,40 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     settings.root_cache_path = root_cache_path.str;
     settings.cache_path = cache_path.str;
     settings.log_file = log_file.str;
+    debug_log("settings prepared subprocess=" + runtime_dir.path_join("fennara_cef_helper") +
+              " resources=" + runtime_dir +
+              " locales=" + runtime_dir.path_join("locales"));
 
     std::string executable_path = utf8(godot::OS::get_singleton()->get_executable_path());
     char *argv[] = { executable_path.data(), nullptr };
     cef_main_args_t args;
     args.argc = 1;
     args.argv = argv;
+    debug_log("calling cef_execute_process argv0=" + godot::String(executable_path.c_str()));
     const int process_exit_code = api.cef_execute_process(&args, nullptr, nullptr);
+    debug_log("cef_execute_process returned " + godot::String::num_int64(process_exit_code));
     if (process_exit_code >= 0) {
         webview_backend::output_error(
             "Web chat Linux CEF execute_process unexpectedly handled the Godot process");
         cef.reset();
         return false;
     }
+    debug_log("calling cef_initialize");
     if (api.cef_initialize(&args, &settings, nullptr, nullptr) == 0) {
         webview_backend::output_error("Web chat Linux CEF initialization failed");
         cef.reset();
         return false;
     }
     cef->initialized = true;
+    debug_log("cef_initialize succeeded");
 
     godot::Vector2 size = owner->get_size();
     cef->width = clamp_dimension(size.x);
     cef->height = clamp_dimension(size.y);
     cef->render_handler.set_size(cef->width, cef->height);
+    debug_log("initial browser size " +
+              godot::String::num_int64(cef->width) + "x" +
+              godot::String::num_int64(cef->height));
 
     cef_window_info_t window_info{};
     window_info.size = sizeof(window_info);
@@ -364,6 +443,7 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     browser_settings.background_color = 0xffffffff;
 
     CefString cef_url(api, url);
+    debug_log("calling cef_browser_host_create_browser_sync url=" + url);
     cef->browser = api.cef_browser_host_create_browser_sync(
         &window_info,
         &cef->client.client,
@@ -371,6 +451,8 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
         &browser_settings,
         nullptr,
         nullptr);
+    debug_log("cef_browser_host_create_browser_sync returned " +
+              godot::String(cef->browser == nullptr ? "null" : "browser"));
 
     if (cef->browser == nullptr) {
         webview_backend::output_error("Web chat Linux CEF browser creation failed");
