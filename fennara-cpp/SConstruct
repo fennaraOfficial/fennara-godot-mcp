@@ -2,6 +2,7 @@
 
 import os
 import glob
+from SCons.Script import Exit
 
 CacheDir(os.environ.get("SCONS_CACHE", ".scons_cache/"))
 
@@ -31,6 +32,11 @@ sources = glob.glob("src/**/*.cpp", recursive=True)
 sources += glob.glob("src/**/*.c", recursive=True)
 if env["platform"] == "macos":
     sources += glob.glob("src/**/*.mm", recursive=True)
+if env["platform"] == "linux":
+    sources = [
+        s for s in sources
+        if not s.replace("\\", "/").startswith("src/ui/linux_cef_bridge/")
+    ]
 
 build_sources = [s.replace("src", build_dir, 1) for s in sources]
 
@@ -50,5 +56,39 @@ else:
     )
 
 targets = [library]
+
+if env["platform"] == "linux":
+    cef_root = os.environ.get("FENNARA_CEF_ROOT", "")
+    cef_wrapper_dir = os.path.join(cef_root, "libcef_dll")
+    if not cef_root or not os.path.isdir(cef_wrapper_dir):
+        print(
+            "Linux CEF bridge build requires FENNARA_CEF_ROOT pointing at the "
+            "pinned official CEF 139 binary tree with libcef_dll/."
+        )
+        Exit(1)
+
+    bridge_env = env.Clone()
+    bridge_env.Append(CPPPATH=[cef_root])
+    bridge_env.Append(CPPDEFINES=[
+        "WRAPPING_CEF_SHARED",
+        "__STDC_CONSTANT_MACROS",
+        "__STDC_FORMAT_MACROS",
+    ])
+    bridge_env.Append(CXXFLAGS=[
+        "-fPIC",
+        "-fvisibility=hidden",
+        "-fvisibility-inlines-hidden",
+        "-Wno-deprecated-declarations",
+        "-Wno-missing-field-initializers",
+        "-Wno-unused-parameter",
+    ])
+
+    bridge_sources = glob.glob("src/ui/linux_cef_bridge/**/*.cpp", recursive=True)
+    bridge_sources += glob.glob(os.path.join(cef_wrapper_dir, "**/*.cc"), recursive=True)
+    bridge_library = bridge_env.SharedLibrary(
+        "{}/libfennara_linux_cef_bridge".format(out_dir),
+        source=bridge_sources,
+    )
+    targets.append(bridge_library)
 
 Default(targets)

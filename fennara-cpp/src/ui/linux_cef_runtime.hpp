@@ -6,10 +6,6 @@
 
 namespace fennara::linux_cef_runtime {
 
-namespace capi {
-struct cef_api_t;
-}
-
 enum class StatusCode {
     Ready,
     Missing,
@@ -34,8 +30,7 @@ struct RuntimeStatus {
 class LoadedRuntime {
 public:
     LoadedRuntime(void *handle,
-                  const RuntimeStatus &status,
-                  std::unique_ptr<capi::cef_api_t> api);
+                  const RuntimeStatus &status);
     ~LoadedRuntime();
 
     LoadedRuntime(const LoadedRuntime &) = delete;
@@ -48,14 +43,11 @@ public:
         return runtime_status;
     }
 
-    const capi::cef_api_t &api() const;
-
 private:
     void close();
 
     void *library_handle = nullptr;
     RuntimeStatus runtime_status;
-    std::unique_ptr<capi::cef_api_t> cef_api;
 };
 
 struct LoadResult {

@@ -2,8 +2,6 @@
 
 #include "linux_cef_runtime.hpp"
 
-#include "linux_cef_capi.hpp"
-
 #include "fennara/app_paths.hpp"
 
 #include <godot_cpp/classes/dir_access.hpp>
@@ -66,34 +64,6 @@ RuntimeStatus make_status(StatusCode code,
     status.libcef_path = libcef_path;
     status.version = version;
     return status;
-}
-
-template <typename T>
-bool resolve_symbol(void *handle, const char *name, T &out, godot::String &missing_name) {
-    dlerror();
-    void *symbol = dlsym(handle, name);
-    const char *symbol_error = dlerror();
-    if (symbol_error != nullptr || symbol == nullptr) {
-        missing_name = name;
-        return false;
-    }
-    out = reinterpret_cast<T>(symbol);
-    return true;
-}
-
-std::unique_ptr<capi::cef_api_t> resolve_api(void *handle, godot::String &missing_name) {
-    auto api = std::make_unique<capi::cef_api_t>();
-    if (!resolve_symbol(handle, "cef_execute_process", api->cef_execute_process, missing_name) ||
-        !resolve_symbol(handle, "cef_initialize", api->cef_initialize, missing_name) ||
-        !resolve_symbol(handle, "cef_shutdown", api->cef_shutdown, missing_name) ||
-        !resolve_symbol(handle, "cef_do_message_loop_work", api->cef_do_message_loop_work, missing_name) ||
-        !resolve_symbol(handle,
-                        "cef_browser_host_create_browser_sync",
-                        api->cef_browser_host_create_browser_sync,
-                        missing_name)) {
-        return nullptr;
-    }
-    return api;
 }
 
 godot::Dictionary read_marker(const godot::String &marker_path) {
@@ -286,11 +256,9 @@ RuntimeStatus discover_in_root(const godot::String &root) {
 } // namespace
 
 LoadedRuntime::LoadedRuntime(void *handle,
-                             const RuntimeStatus &status,
-                             std::unique_ptr<capi::cef_api_t> api) :
+                             const RuntimeStatus &status) :
         library_handle(handle),
-        runtime_status(status),
-        cef_api(std::move(api)) {
+        runtime_status(status) {
 }
 
 LoadedRuntime::~LoadedRuntime() {
@@ -299,8 +267,7 @@ LoadedRuntime::~LoadedRuntime() {
 
 LoadedRuntime::LoadedRuntime(LoadedRuntime &&other) noexcept :
         library_handle(other.library_handle),
-        runtime_status(other.runtime_status),
-        cef_api(std::move(other.cef_api)) {
+        runtime_status(other.runtime_status) {
     other.library_handle = nullptr;
 }
 
@@ -309,14 +276,9 @@ LoadedRuntime &LoadedRuntime::operator=(LoadedRuntime &&other) noexcept {
         close();
         library_handle = other.library_handle;
         runtime_status = other.runtime_status;
-        cef_api = std::move(other.cef_api);
         other.library_handle = nullptr;
     }
     return *this;
-}
-
-const capi::cef_api_t &LoadedRuntime::api() const {
-    return *cef_api;
 }
 
 void LoadedRuntime::close() {
@@ -386,22 +348,7 @@ LoadResult load() {
         return result;
     }
 
-    godot::String missing_symbol;
-    std::unique_ptr<capi::cef_api_t> api = resolve_api(handle, missing_symbol);
-    if (api == nullptr) {
-        dlclose(handle);
-        result.status = make_status(
-            StatusCode::LoadFailed,
-            "Linux CEF runtime libcef.so is missing required symbol " +
-                missing_symbol + ": " + result.status.libcef_path,
-            result.status.runtime_dir,
-            result.status.marker_path,
-            result.status.libcef_path,
-            result.status.version);
-        return result;
-    }
-
-    result.runtime = std::make_unique<LoadedRuntime>(handle, result.status, std::move(api));
+    result.runtime = std::make_unique<LoadedRuntime>(handle, result.status);
     return result;
 }
 

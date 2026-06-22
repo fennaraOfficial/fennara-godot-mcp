@@ -149,6 +149,21 @@ inside `fennara-addon-*`. Package Preview may build a separate CEF artifact for
 testing, but release publishing still requires an explicit maintainer-selected
 runtime asset and manifest checksum.
 
+Linux GDExtension builds also need the official CEF SDK wrapper source, but not
+the CEF runtime files in the addon. CI runs:
+
+```bash
+node scripts/prepare-linux-cef-sdk.mjs
+```
+
+and passes the extracted directory as `FENNARA_CEF_ROOT` to SCons. SCons uses
+`FENNARA_CEF_ROOT/libcef_dll/` to build the small
+`libfennara_linux_cef_bridge.so` addon library against the pinned CEF 139 C++
+wrapper. The SDK download is version- and hash-checked because the generated
+wrapper source must match the runtime CEF ABI. The bridge is packaged with the
+addon; `libcef.so`, resources, locale packs, and `fennara_cef_helper` remain in
+the separate shared CEF runtime.
+
 Package scripts fail if CEF runtime files are found inside the addon archive.
 The runtime asset name must be:
 

@@ -68,6 +68,11 @@ jobs:
         if: matrix.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential bzip2 pkg-config
 
+      - name: Prepare Linux CEF SDK
+        if: matrix.platform == 'linux'
+        id: linux_cef_sdk
+        run: node scripts/prepare-linux-cef-sdk.mjs
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -134,6 +139,7 @@ jobs:
         working-directory: fennara-cpp
         env:
           SCONS_CACHE: ${{ github.workspace }}/fennara-cpp/.scons_cache
+          FENNARA_CEF_ROOT: ${{ steps.linux_cef_sdk.outputs.cef_root }}
         run: scons platform=${{ matrix.platform }} target=editor --debug=explain --cache-show
 
       - name: Build local tools
@@ -168,9 +174,11 @@ jobs:
 
           if [[ -z "${download_url}" ]]; then
             cef_version="139.0.28+g55ab8a8+chromium-139.0.7258.139"
-            download_name="cef_binary_${cef_version}_linux64_minimal.tar.bz2"
-            encoded_download_name="${download_name//+/%2B}"
-            download_url="https://cef-builds.spotifycdn.com/${encoded_download_name}"
+            node scripts/prepare-linux-cef-runtime.mjs \
+              --cef-root "${{ steps.linux_cef_sdk.outputs.cef_root }}" \
+              --version "${cef_version}" \
+              --out-dir dist/linux-cef-runtime-preview
+            exit 0
           else
             url_path="${download_url%%\?*}"
             download_name="$(basename "${url_path}")"

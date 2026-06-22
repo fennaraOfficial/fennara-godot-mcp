@@ -131,7 +131,7 @@ function buildHelper(target) {
   run("c++", [
     "-std=c++17",
     "-O2",
-    `-I${path.join(root, "fennara-cpp", "vendor", "cef")}`,
+    `-I${cefRoot}`,
     source,
     "-Wl,-rpath,$ORIGIN",
     "-ldl",

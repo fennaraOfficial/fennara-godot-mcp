@@ -45,7 +45,8 @@ This is the quick map for contributors and coding agents working in this reposit
 | `fennara-cpp/vendor/cef/` | Official CEF 139 header snapshot used by the Linux OSR bridge. Runtime binaries stay outside the addon. |
 | `fennara-cpp/src/ui/webview_host*` | Native in-editor chat webview host and platform backends. |
 | `fennara-cpp/src/ui/linux_cef_runtime.*` | Linux-only shared CEF runtime discovery, marker validation, and dynamic `libcef.so` loader foundation. |
-| `fennara-cpp/src/ui/linux_cef_osr.*` / `linux_cef_input.*` / `linux_cef_capi.hpp` | Linux-only CEF off-screen rendering surface, Godot input forwarding, official-header dynamic CEF API table, and Godot texture updates for the internal chat webview. |
+| `fennara-cpp/src/ui/linux_cef_osr.*` / `linux_cef_input.*` / `linux_cef_bridge_api.hpp` | Linux-only CEF off-screen rendering surface, Godot input forwarding, bridge ABI loading, and Godot texture updates for the internal chat webview. |
+| `fennara-cpp/src/ui/linux_cef_bridge/` | Small Linux-only bridge library built from the pinned official CEF 139 `libcef_dll_wrapper` source and Fennara's CEF OSR adapter. The main GDExtension dlopens this after the external `libcef.so` runtime is loaded. |
 | `fennara-cpp/src/tools/` | Godot-facing tool implementations. |
 | `fennara-cpp/src/lsp/` | Script diagnostics and language-server helpers. |
 | `fennara-cpp/src/runtime/` | Runtime capture/session support used by runtime tools. |
@@ -70,6 +71,7 @@ This is the quick map for contributors and coding agents working in this reposit
 | `scripts/sync-chat-ui.mjs` | Copies the buildless chat UI source into the addon payload. |
 | `scripts/package-preview.mjs` | Assembles addon, CLI, and local runtime release zips. |
 | `scripts/prepare-linux-cef-runtime.mjs` | Manually assembles the separate Linux x64 CEF runtime zip from a maintainer-selected CEF binary tree. |
+| `scripts/prepare-linux-cef-sdk.mjs` | Downloads and extracts the pinned official CEF 139 Linux minimal SDK for CI builds that need `libcef_dll/` wrapper source. |
 | `scripts/check-linux-cef-runtime-release.mjs` | Validates the optional Linux CEF runtime release asset against `local/webview-runtimes/linux-cef.json`. |
 | `scripts/cef/linux/fennara_cef_helper.cpp` | Minimal Linux CEF subprocess helper source packaged inside the separate CEF runtime zip. |
 | `.github/workflows/version-check.yml` | Version consistency check. |

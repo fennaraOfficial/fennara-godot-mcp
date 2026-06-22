@@ -84,7 +84,12 @@ jobs:
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config
+        run: sudo apt-get update && sudo apt-get install -y build-essential bzip2 pkg-config
+
+      - name: Prepare Linux CEF SDK
+        if: matrix.platform == 'linux'
+        id: linux_cef_sdk
+        run: node scripts/prepare-linux-cef-sdk.mjs
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -152,6 +157,7 @@ jobs:
         working-directory: fennara-cpp
         env:
           SCONS_CACHE: ${{ github.workspace }}/fennara-cpp/.scons_cache
+          FENNARA_CEF_ROOT: ${{ steps.linux_cef_sdk.outputs.cef_root }}
         run: scons platform=${{ matrix.platform }} target=editor --debug=explain --cache-show
 
       - name: Build local tools

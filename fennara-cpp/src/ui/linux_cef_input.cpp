@@ -21,21 +21,21 @@ int clamp_coordinate(double value, int limit) {
 }
 
 uint32_t modifier_flags(const godot::InputEventWithModifiers *event) {
-    uint32_t flags = EVENTFLAG_NONE;
+    uint32_t flags = FENNARA_CEF_EVENTFLAG_NONE;
     if (event == nullptr) {
         return flags;
     }
     if (event->is_shift_pressed()) {
-        flags |= EVENTFLAG_SHIFT_DOWN;
+        flags |= FENNARA_CEF_EVENTFLAG_SHIFT_DOWN;
     }
     if (event->is_ctrl_pressed()) {
-        flags |= EVENTFLAG_CONTROL_DOWN;
+        flags |= FENNARA_CEF_EVENTFLAG_CONTROL_DOWN;
     }
     if (event->is_alt_pressed()) {
-        flags |= EVENTFLAG_ALT_DOWN;
+        flags |= FENNARA_CEF_EVENTFLAG_ALT_DOWN;
     }
     if (event->is_meta_pressed()) {
-        flags |= EVENTFLAG_COMMAND_DOWN;
+        flags |= FENNARA_CEF_EVENTFLAG_COMMAND_DOWN;
     }
     return flags;
 }
@@ -48,27 +48,27 @@ uint32_t mouse_button_flags(const godot::InputEventMouse *event) {
 
     const int64_t mask = static_cast<int64_t>(event->get_button_mask());
     if ((mask & godot::MOUSE_BUTTON_MASK_LEFT) != 0) {
-        flags |= EVENTFLAG_LEFT_MOUSE_BUTTON;
+        flags |= FENNARA_CEF_EVENTFLAG_LEFT_MOUSE_BUTTON;
     }
     if ((mask & godot::MOUSE_BUTTON_MASK_MIDDLE) != 0) {
-        flags |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
+        flags |= FENNARA_CEF_EVENTFLAG_MIDDLE_MOUSE_BUTTON;
     }
     if ((mask & godot::MOUSE_BUTTON_MASK_RIGHT) != 0) {
-        flags |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
+        flags |= FENNARA_CEF_EVENTFLAG_RIGHT_MOUSE_BUTTON;
     }
     return flags;
 }
 
-bool cef_button_type(godot::MouseButton button, cef_mouse_button_type_t &type) {
+bool cef_button_type(godot::MouseButton button, int &type) {
     switch (button) {
         case godot::MOUSE_BUTTON_LEFT:
-            type = MBT_LEFT;
+            type = FENNARA_CEF_MOUSE_BUTTON_LEFT;
             return true;
         case godot::MOUSE_BUTTON_MIDDLE:
-            type = MBT_MIDDLE;
+            type = FENNARA_CEF_MOUSE_BUTTON_MIDDLE;
             return true;
         case godot::MOUSE_BUTTON_RIGHT:
-            type = MBT_RIGHT;
+            type = FENNARA_CEF_MOUSE_BUTTON_RIGHT;
             return true;
         default:
             return false;
@@ -179,16 +179,16 @@ char16_t cef_character(char32_t value) {
     return static_cast<char16_t>(value);
 }
 
-cef_mouse_event_t make_mouse_event(const godot::InputEventMouse *event,
-                                   godot::TextureRect *texture_rect,
-                                   int width,
-                                   int height,
-                                   MouseState &mouse_state) {
+fennara_cef_bridge_mouse_event make_mouse_event(const godot::InputEventMouse *event,
+                                                godot::TextureRect *texture_rect,
+                                                int width,
+                                                int height,
+                                                MouseState &mouse_state) {
     const godot::Vector2 position =
         event->get_global_position() -
         (texture_rect != nullptr ? texture_rect->get_global_position() : godot::Vector2());
 
-    cef_mouse_event_t mouse_event;
+    fennara_cef_bridge_mouse_event mouse_event;
     mouse_event.x = clamp_coordinate(position.x, width);
     mouse_event.y = clamp_coordinate(position.y, height);
     mouse_event.modifiers = mouse_button_flags(event);
@@ -201,31 +201,32 @@ cef_mouse_event_t make_mouse_event(const godot::InputEventMouse *event,
 } // namespace
 
 bool handle_input(const godot::Ref<godot::InputEvent> &event,
-                  cef_browser_host_t *host,
+                  const fennara_cef_bridge_api *api,
+                  fennara_cef_bridge_browser *browser,
                   godot::TextureRect *texture_rect,
                   int width,
                   int height,
                   MouseState &mouse_state,
                   bool &request_focus) {
     request_focus = false;
-    if (event.is_null() || host == nullptr) {
+    if (event.is_null() || api == nullptr || browser == nullptr) {
         return false;
     }
 
     if (auto *motion = godot::Object::cast_to<godot::InputEventMouseMotion>(event.ptr())) {
-        if (host->send_mouse_move_event == nullptr) {
+        if (api->send_mouse_move == nullptr) {
             return false;
         }
-        cef_mouse_event_t mouse_event = make_mouse_event(motion, texture_rect, width, height, mouse_state);
-        host->send_mouse_move_event(host, &mouse_event, 0);
+        fennara_cef_bridge_mouse_event mouse_event = make_mouse_event(motion, texture_rect, width, height, mouse_state);
+        api->send_mouse_move(browser, &mouse_event, 0);
         return true;
     }
 
     if (auto *button = godot::Object::cast_to<godot::InputEventMouseButton>(event.ptr())) {
-        cef_mouse_event_t mouse_event = make_mouse_event(button, texture_rect, width, height, mouse_state);
+        fennara_cef_bridge_mouse_event mouse_event = make_mouse_event(button, texture_rect, width, height, mouse_state);
         const godot::MouseButton button_index = button->get_button_index();
         if (is_wheel_button(button_index)) {
-            if (!button->is_pressed() || host->send_mouse_wheel_event == nullptr) {
+            if (!button->is_pressed() || api->send_mouse_wheel == nullptr) {
                 return false;
             }
             const int delta = wheel_delta(button->get_factor());
@@ -240,12 +241,12 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
             } else if (button_index == godot::MOUSE_BUTTON_WHEEL_RIGHT) {
                 delta_x = -delta;
             }
-            host->send_mouse_wheel_event(host, &mouse_event, delta_x, delta_y);
+            api->send_mouse_wheel(browser, &mouse_event, delta_x, delta_y);
             return true;
         }
 
-        cef_mouse_button_type_t type = MBT_LEFT;
-        if (!cef_button_type(button_index, type) || host->send_mouse_click_event == nullptr) {
+        int type = FENNARA_CEF_MOUSE_BUTTON_LEFT;
+        if (!cef_button_type(button_index, type) || api->send_mouse_click == nullptr) {
             return false;
         }
 
@@ -254,12 +255,12 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
         }
         const int mouse_up = button->is_pressed() ? 0 : 1;
         const int click_count = button->is_double_click() ? 2 : 1;
-        host->send_mouse_click_event(host, &mouse_event, type, mouse_up, click_count);
+        api->send_mouse_click(browser, &mouse_event, type, mouse_up, click_count);
         return true;
     }
 
     if (auto *key = godot::Object::cast_to<godot::InputEventKey>(event.ptr())) {
-        if (host->send_key_event == nullptr) {
+        if (api->send_key_event == nullptr) {
             return false;
         }
 
@@ -269,32 +270,31 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
             return false;
         }
 
-        cef_key_event_t key_event{};
-        key_event.size = sizeof(key_event);
-        key_event.type = key->is_pressed() ? KEYEVENT_RAWKEYDOWN : KEYEVENT_KEYUP;
+        fennara_cef_bridge_key_event key_event{};
+        key_event.type = key->is_pressed() ? FENNARA_CEF_KEYEVENT_RAWKEYDOWN : FENNARA_CEF_KEYEVENT_KEYUP;
         key_event.modifiers = modifier_flags(key);
         if (key->is_echo()) {
-            key_event.modifiers |= EVENTFLAG_IS_REPEAT;
+            key_event.modifiers |= FENNARA_CEF_EVENTFLAG_IS_REPEAT;
         }
         if (is_keypad_key(key->get_keycode())) {
-            key_event.modifiers |= EVENTFLAG_IS_KEY_PAD;
+            key_event.modifiers |= FENNARA_CEF_EVENTFLAG_IS_KEY_PAD;
         }
         if (key->get_location() == godot::KEY_LOCATION_LEFT) {
-            key_event.modifiers |= EVENTFLAG_IS_LEFT;
+            key_event.modifiers |= FENNARA_CEF_EVENTFLAG_IS_LEFT;
         } else if (key->get_location() == godot::KEY_LOCATION_RIGHT) {
-            key_event.modifiers |= EVENTFLAG_IS_RIGHT;
+            key_event.modifiers |= FENNARA_CEF_EVENTFLAG_IS_RIGHT;
         }
         key_event.windows_key_code = windows_code != 0 ? windows_code : static_cast<int>(character);
         key_event.native_key_code = key_event.windows_key_code;
-        host->send_key_event(host, &key_event);
+        api->send_key_event(browser, &key_event);
 
         const bool shortcut_modifier = key->is_ctrl_pressed() || key->is_alt_pressed() || key->is_meta_pressed();
         if (key->is_pressed() && character != 0 && !shortcut_modifier) {
-            cef_key_event_t char_event = key_event;
-            char_event.type = KEYEVENT_CHAR;
+            fennara_cef_bridge_key_event char_event = key_event;
+            char_event.type = FENNARA_CEF_KEYEVENT_CHAR;
             char_event.character = character;
             char_event.unmodified_character = character;
-            host->send_key_event(host, &char_event);
+            api->send_key_event(browser, &char_event);
         }
         return true;
     }
@@ -302,16 +302,18 @@ bool handle_input(const godot::Ref<godot::InputEvent> &event,
     return false;
 }
 
-void notify_mouse_leave(cef_browser_host_t *host, MouseState &mouse_state) {
-    if (host == nullptr || host->send_mouse_move_event == nullptr || !mouse_state.has_position) {
+void notify_mouse_leave(const fennara_cef_bridge_api *api,
+                        fennara_cef_bridge_browser *browser,
+                        MouseState &mouse_state) {
+    if (api == nullptr || browser == nullptr || api->send_mouse_move == nullptr || !mouse_state.has_position) {
         return;
     }
 
-    cef_mouse_event_t mouse_event;
+    fennara_cef_bridge_mouse_event mouse_event;
     mouse_event.x = mouse_state.last_x;
     mouse_event.y = mouse_state.last_y;
-    mouse_event.modifiers = EVENTFLAG_NONE;
-    host->send_mouse_move_event(host, &mouse_event, 1);
+    mouse_event.modifiers = FENNARA_CEF_EVENTFLAG_NONE;
+    api->send_mouse_move(browser, &mouse_event, 1);
     mouse_state.has_position = false;
 }
 
