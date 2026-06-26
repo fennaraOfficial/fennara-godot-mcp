@@ -158,8 +158,9 @@ For C# projects:
 fennara install --csharp
 ```
 
-adds the same addon plus the C# support files needed by Fennara's diagnostics
-path.
+adds the same addon plus Fennara's managed `csharp-ls` language server support.
+The addon uses that server for `.cs` `script_diagnostics` results and runtime
+preflight checks.
 
 ## MCP Setup
 

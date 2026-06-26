@@ -79,6 +79,7 @@ if env["platform"] == "linux":
         "-fvisibility=hidden",
         "-fvisibility-inlines-hidden",
         "-Wno-deprecated-declarations",
+        "-Wno-attributes",
         "-Wno-missing-field-initializers",
         "-Wno-unused-parameter",
     ])

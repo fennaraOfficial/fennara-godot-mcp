@@ -3,13 +3,14 @@
 Fennara is a Godot MCP and AI plugin workflow for AI agents working inside real Godot projects.
 
 Canonical URLs:
-- Product: https://www.fennara.io
-- Godot MCP overview: https://www.fennara.io/godot-mcp
-- Godot AI plugin overview: https://www.fennara.io/godot-ai-plugin
-- Setup guide: https://www.fennara.io/docs/get-started
-- MCP docs: https://www.fennara.io/docs/mcp
-- Godot tools docs: https://www.fennara.io/docs/tools
+- Product/site: https://www.fennara.io
+- Repository: https://github.com/fennaraOfficial/fennara-godot-ai
+- Latest release: https://github.com/fennaraOfficial/fennara-godot-ai/releases/latest
 - Demo video: https://www.youtube.com/watch?v=0Egu3S-9MM0
+
+Do not treat website subroutes as canonical unless they are intentionally
+re-added and maintained. For setup, MCP, tool, provider, and release details,
+prefer the repository docs listed below.
 
 Core positioning:
 - Traditional MCP gives an AI commands.

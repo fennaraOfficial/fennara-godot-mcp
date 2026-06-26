@@ -255,6 +255,9 @@ cd path/to/your-godot-project
 fennara install --csharp
 ```
 
+`--csharp` installs Fennara's managed `csharp-ls` language server support, which
+the addon uses for `.cs` diagnostics and runtime preflight checks.
+
 The CLI also writes project guidance for AI coding agents:
 
 ```text

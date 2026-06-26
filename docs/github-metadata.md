@@ -8,7 +8,7 @@ Godot MCP workflow for AI agents using Fennara: diagnostics, scene validation, r
 
 ## Website
 
-https://www.fennara.io/godot-mcp
+https://www.fennara.io
 
 ## Topics
 

@@ -69,6 +69,10 @@ For a C# project:
 fennara install --csharp
 ```
 
+`--csharp` installs Fennara's managed `csharp-ls` language server support so
+`script_diagnostics`, runtime preflight checks, and C# feedback can report real
+C# parser/type issues.
+
 Then open the project in Godot.
 
 `fennara install` also writes project guidance for AI coding agents:

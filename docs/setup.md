@@ -61,6 +61,10 @@ cd path/to/your-godot-project
 fennara install --csharp
 ```
 
+`--csharp` installs Fennara's managed `csharp-ls` language server support. The
+addon uses it for `.cs` results from `script_diagnostics` and for runtime
+preflight checks before managed scenes are launched.
+
 `fennara install` copies the Godot addon into:
 
 ```text
@@ -235,7 +239,8 @@ Open the intended Godot project and use the Fennara dock to set it as the MCP ta
 
 ### C# Diagnostics Are Missing
 
-Install C# support:
+Install C# support. This installs the managed `csharp-ls` language server used
+by Fennara's C# diagnostics:
 
 ```bash
 cd path/to/your-godot-project
