@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/tls_options.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 
 #include <string>
@@ -44,6 +45,92 @@ godot::String normalize_version(godot::String version) {
         version = version.substr(1);
     }
     return version;
+}
+
+bool is_version_candidate(godot::String version) {
+    version = normalize_version(version);
+    godot::PackedStringArray parts = version.split(".");
+    if (parts.size() < 2) {
+        return false;
+    }
+    for (int i = 0; i < parts.size(); i++) {
+        godot::String part = parts[i];
+        if (part.is_empty()) {
+            return false;
+        }
+        char32_t c = part[0];
+        if (c < '0' || c > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+godot::String extract_asset_version(const godot::String &name,
+                                    const godot::String &prefix,
+                                    const godot::String &suffix) {
+    if (!name.begins_with(prefix) || !name.ends_with(suffix)) {
+        return "";
+    }
+    int start = prefix.length();
+    int count = name.length() - start - suffix.length();
+    if (count <= 0) {
+        return "";
+    }
+    godot::String version = normalize_version(name.substr(start, count));
+    return is_version_candidate(version) ? version : godot::String();
+}
+
+godot::String latest_version_from_release(const godot::Dictionary &response) {
+    godot::String tag = normalize_version(godot::String(response.get("tag_name", "")));
+    if (is_version_candidate(tag)) {
+        return tag;
+    }
+
+    godot::Variant assets_value = response.get("assets", godot::Array());
+    if (assets_value.get_type() != godot::Variant::ARRAY) {
+        return "";
+    }
+
+    godot::Array assets = assets_value;
+    const godot::String prefixes[] = {
+        "fennara-release-manifest-v",
+        "fennara-release-addon-v",
+        "fennara-release-local-linux-x86_64-v",
+        "fennara-release-local-windows-x86_64-v",
+        "fennara-release-local-macos-arm64-v",
+        "fennara-cli-linux-x86_64-v",
+        "fennara-cli-windows-x86_64-v",
+        "fennara-cli-macos-arm64-v",
+    };
+    const godot::String suffixes[] = {
+        ".json",
+        ".zip",
+        ".zip",
+        ".zip",
+        ".zip",
+        ".zip",
+        ".zip",
+        ".zip",
+    };
+
+    for (int prefix_index = 0; prefix_index < 8; prefix_index++) {
+        for (int asset_index = 0; asset_index < assets.size(); asset_index++) {
+            godot::Variant asset_value = assets[asset_index];
+            if (asset_value.get_type() != godot::Variant::DICTIONARY) {
+                continue;
+            }
+            godot::Dictionary asset = asset_value;
+            godot::String name = asset.get("name", "");
+            godot::String version =
+                extract_asset_version(name, prefixes[prefix_index], suffixes[prefix_index]);
+            if (!version.is_empty()) {
+                return version;
+            }
+        }
+    }
+
+    return "";
 }
 
 bool version_is_newer(const godot::String &latest, const godot::String &current) {
@@ -178,9 +265,9 @@ void check_once() {
         return;
     }
 
-    godot::String latest = normalize_version(godot::String(response.get("tag_name", "")));
+    godot::String latest = latest_version_from_release(response);
     if (latest.is_empty()) {
-        set_error("Latest release did not include tag_name.");
+        set_error("Latest release did not include a versioned tag or asset.");
         return;
     }
 

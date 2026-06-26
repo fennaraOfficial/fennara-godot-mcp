@@ -138,6 +138,11 @@ location and write the matching `webview/cef/linux-x64/current.json` marker.
 Keep that payload outside the Godot project addon; `addons/fennara` should not
 contain `libcef.so` or other CEF runtime files.
 
+This CEF payload is only for embedded Linux chat. Users can choose **Open chat
+in my system browser next time** in Chat Settings to display the same built-in
+chat through the local daemon in their system browser instead of the embedded
+Godot webview.
+
 The final Linux CEF layout should look like this:
 
 ```text
@@ -219,6 +224,10 @@ fennara mcp-setup --help
 ```
 
 Restart the MCP app after setup.
+
+This only connects the external MCP app to Fennara's Godot tools. It does not
+configure the built-in Fennara chat dock's model provider. Configure the dock
+inside Godot if you want built-in chat, or see [MCP Apps And Built-In Chat](chat-vs-mcp.md).
 
 ## 6. Verify
 

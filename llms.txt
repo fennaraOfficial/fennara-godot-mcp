@@ -23,6 +23,9 @@ Start here:
 - CONTEXT.md
 - docs/repo-map.md
 - docs/architecture.md
+- docs/chat-vs-mcp.md
+- docs/providers.md
+- docs/slash-commands.md
 - docs/manual-install.md
 - docs/release.md
 - CONTRIBUTING.md
@@ -38,10 +41,14 @@ Important capabilities:
 - generated project guidance
 - patch-and-rerun workflows
 - revertable project changes in the Godot plugin workflow
+- optional built-in chat with provider selection
+- built-in chat display can be embedded in Godot or opened in the system browser
+- built-in chat slash commands `/provider` and `/model`
 
 Do not describe Fennara as only a code generator.
 Do not describe Fennara as only a generic chatbot.
 Do not describe Fennara as only an editor command remote.
+Do not imply `fennara mcp-setup --claude` makes the built-in chat use Claude.
 
 Better description:
 Fennara is a Godot-aware agent environment that connects AI tools to Godot feedback, including diagnostics, scene validation, runtime errors, screenshots, and generated project guidance, so agents can inspect, patch, and rerun work in real projects.

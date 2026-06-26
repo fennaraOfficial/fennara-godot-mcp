@@ -40,6 +40,20 @@ contract separates two browser surface styles:
 | macOS | Native WKWebView attached to the Godot editor window. |
 | Linux | CEF off-screen rendering into an internal Godot `TextureRect`, using a shared CEF runtime from Fennara app data. |
 
+Users can also set Chat Settings to open the built-in chat in their system
+browser next time. In that mode the Godot dock shows an **Open chat** fallback
+panel and serves the same chat UI from the local daemon at `127.0.0.1` with the
+owning editor's `chat_token`. This changes the display surface only; provider
+settings, chat history, project scope, snapshots, tool execution, and external
+MCP routing stay on the same daemon paths.
+
+`fennara install`, `fennara update`, and `fennara doctor` report webview
+prerequisites for the current platform. Windows warns when Microsoft Edge
+WebView2 Runtime is missing, macOS reports the system WebKit.framework status,
+and Linux validates the release-managed shared CEF runtime. These checks affect
+only the optional built-in chat dock; MCP tools continue to work without a
+native webview.
+
 The Linux path renders browser pixels inside a Godot `Control` and routes the
 CEF message loop through the dock process hook. The GDExtension discovers the
 shared CEF runtime, validates its `fennara-cef-runtime.json` marker and
@@ -58,13 +72,25 @@ Multiple Godot editors may be open at the same time. Each embedded chat
 websocket is accepted with the owning editor's `chat_token` and remains bound to
 that Godot session for chat storage scope, snapshots, tool execution, cancel,
 and revert. External MCP clients still route through the daemon's active target.
-OpenRouter settings are global for now, while chats remain project-scoped.
+Chat provider settings are global for now, while chats remain project-scoped.
+Cloud chat providers use locally stored API keys; local providers use base URLs
+stored by the daemon. The current built-in chat provider set is OpenRouter,
+Ollama Cloud, DeepSeek, Z.AI, local Ollama, and LM Studio. Ollama defaults to
+`http://127.0.0.1:11434`; LM Studio defaults to `http://127.0.0.1:1234/v1`.
+The daemon chat runtime resolves selected models through a small provider catalog
+before making requests. Canonical model refs use `provider/model`, so
+`openrouter/google/example` resolves provider `openrouter` and model
+`google/example`; existing OpenRouter model ids such as `google/example` remain
+accepted as legacy selections. Providers share OpenAI-compatible chat adapters
+where possible, with provider quirks isolated in provider modules and normalized
+stream/error events above the adapter boundary.
 
 ## Install Layout
 
-The install script only installs the CLI and adds it to `PATH`. Users normally
-rerun it only when a release manifest raises `minimum_cli_version` because the
-outer CLI needs a new schema or install primitive.
+The install script installs the small outer CLI and adds it to `PATH`. After
+that, modern releases can update the installed CLI through `fennara update` or
+`fennara self-update`; rerun the install script only when CLI self-update is not
+available for the selected release or install location.
 
 After that, `fennara install` or `fennara update` fetches the release manifest,
 verifies referenced asset hashes, downloads release assets, and sets up the
@@ -155,6 +181,10 @@ versioned runtime.
 
 That keeps MCP app configs stable across updates.
 
+This setup path is separate from the built-in chat provider path. MCP apps use
+their own model account; the Fennara dock uses the provider configured in chat
+settings.
+
 ## Tool Call Flow
 
 ```text
@@ -178,15 +208,19 @@ validation, runtime state, screenshots, and editor-aware edits.
 
 ## Updates
 
-`fennara update` is the normal project update command. It uses the same
-manifest-driven resolver and installer as `fennara install`.
+`fennara update` is the normal project update command. It first checks the
+release manifest's per-platform CLI asset and, when newer, stages that CLI,
+lets the old process exit, replaces the installed CLI, and resumes the update
+with the new binary. It then uses the same manifest-driven resolver and
+installer as `fennara install`.
 
 It can update:
 
-- the local CLI/runtime package
+- the installed CLI and local runtime package
 - the project addon
 - generated project guidance in `AGENTS.md` and `.fennara/ai/guidelines.md`
 - shared webview runtime assets needed by the current platform, such as Linux CEF
+- webview prerequisite warnings for the optional built-in chat dock
 
 It does not rewrite MCP app config. Run `fennara mcp-setup` again only when
 adding a new MCP client, repairing that client's config, or changing the MCP
@@ -194,7 +228,8 @@ target app integration itself.
 
 If an MCP app is currently running a launcher, the update may keep that launcher
 and continue. The versioned runtime package is still updated, and future starts
-use the version from `current.json`.
+use the version from `current.json`. Use `fennara update --no-self-update` only
+when intentionally skipping the outer CLI check.
 
 The daemon currently allows one managed `runtime_session` scene globally across
 all connected Godot editors. A start request runs in the selected or
@@ -232,4 +267,4 @@ already-loaded runtime.
 - Prefer Godot API feedback over file-only guesses.
 - Return concise markdown results that an MCP client can use directly.
 - Keep launchers stable and move changing code into versioned runtimes.
-- Keep the external MCP path local. The optional built-in chat dock uses the user's own OpenRouter API key and stores it locally through the daemon.
+- Keep the external MCP path local. The optional built-in chat dock uses local provider settings stored through the daemon, such as cloud provider API keys and local Ollama or LM Studio base URLs.

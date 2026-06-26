@@ -8,6 +8,7 @@ Read this file before changing the repository.
 - Prefer simple code and clear ownership boundaries.
 - Do not add game-specific MCP tools or guidance. Fennara should expose Godot feedback and primitive controls, not assumptions about a particular game's movement, combat, inventory, quests, UI flow, or objectives.
 - Do not publish releases, create tags, or run release workflows unless a maintainer explicitly asks for that exact action.
+- Keep branch names human-readable and do not prefix Codex-created branches with `codex/`.
 - Do not change GitHub Actions release behavior casually. Explain any workflow change in the pull request.
 - Keep platform-specific native code behind explicit platform files or small bridge boundaries. Windows, macOS, Linux, and unsupported fallback behavior should remain obvious from filenames and call sites.
 - Do not bundle heavyweight browser runtimes into the Godot addon. Linux CEF is a shared local webview runtime installed under the user's Fennara app-data directory, not copied into every `res://addons/fennara/`.

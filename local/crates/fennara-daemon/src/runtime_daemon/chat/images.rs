@@ -26,6 +26,12 @@ pub(crate) struct ChatImage {
     pub(crate) size_bytes: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ImagePlaceholder {
+    pub(crate) mime_type: String,
+    pub(crate) name: Option<String>,
+}
+
 pub(crate) fn validate_images(images: Option<Vec<ClientImage>>) -> Result<Vec<ChatImage>, String> {
     let Some(images) = images else {
         return Ok(Vec::new());
@@ -60,6 +66,27 @@ pub(crate) fn user_content_value(text: &str, images: &[ChatImage]) -> Value {
     }
     for image in images {
         parts.push(image_content_part(image));
+    }
+    Value::Array(parts)
+}
+
+pub(crate) fn user_content_with_image_placeholders(
+    text: &str,
+    images: &[ImagePlaceholder],
+) -> Value {
+    if images.is_empty() {
+        return json!(text);
+    }
+    let mut parts = Vec::new();
+    if !text.trim().is_empty() {
+        parts.push(json!({ "type": "text", "text": text }));
+    }
+    for image in images {
+        let filename = image.name.as_deref().unwrap_or("file");
+        parts.push(json!({
+            "type": "text",
+            "text": format!("[Attached {}: {}]", image.mime_type, filename)
+        }));
     }
     Value::Array(parts)
 }
@@ -190,4 +217,50 @@ fn clean_short(value: Option<String>) -> Option<String> {
 
 fn is_base64_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, '+' | '/' | '=')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn historical_image_placeholders_do_not_include_base64() {
+        let content = user_content_with_image_placeholders(
+            "look at this",
+            &[ImagePlaceholder {
+                mime_type: "image/png".to_string(),
+                name: Some("screenshot.png".to_string()),
+            }],
+        );
+
+        assert_eq!(
+            content,
+            json!([
+                { "type": "text", "text": "look at this" },
+                { "type": "text", "text": "[Attached image/png: screenshot.png]" }
+            ])
+        );
+        assert!(!content.to_string().contains("base64"));
+    }
+
+    #[test]
+    fn current_images_still_build_image_url_parts() {
+        let content = user_content_value(
+            "current",
+            &[ChatImage {
+                base64: "aGVsbG8=".to_string(),
+                mime_type: "image/png".to_string(),
+                description: None,
+                name: Some("current.png".to_string()),
+                size_bytes: 5,
+            }],
+        );
+
+        assert!(content.to_string().contains("image_url"));
+        assert!(
+            content
+                .to_string()
+                .contains("data:image/png;base64,aGVsbG8=")
+        );
+    }
 }

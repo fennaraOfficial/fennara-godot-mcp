@@ -4,9 +4,12 @@ mod doctor;
 mod mcp_setup;
 mod project_guidance;
 mod project_install;
+mod release_client;
 mod release_manifest;
 mod release_package;
 mod release_update;
+mod self_update;
+mod webview_prereq;
 mod webview_runtime;
 
 use std::env;
@@ -39,6 +42,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         Some("install") => project_install::run(args.iter().skip(1).map(String::as_str).collect()),
         Some("mcp-setup") => mcp_setup::run(args.iter().skip(1).map(String::as_str).collect()),
         Some("update") => release_update::run(args.iter().skip(1).map(String::as_str).collect()),
+        Some("self-update") => self_update::run(args.iter().skip(1).map(String::as_str).collect()),
+        Some(self_update::COMPLETE_COMMAND) => {
+            self_update::complete(args.iter().skip(1).cloned().collect())
+        }
         Some(command) => Err(format!("unknown command: {command}")),
     }
 }
@@ -52,7 +59,8 @@ Usage:
   fennara doctor [--repair]
   fennara install [--project <path>] [--version <version>] [--csharp]
   fennara mcp-setup <target flags>
-  fennara update [--version <version>] [--project <path>]
+  fennara update [--version <version>] [--project <path>] [--no-self-update]
+  fennara self-update [--version <version>]
   fennara --version
   fennara --help
 
@@ -60,7 +68,9 @@ Commands:
   doctor     Inspect the local Fennara install layout
   install    Set up Fennara in a Godot project
   mcp-setup  Configure an MCP app to launch Fennara
-  update     Update an existing Fennara project setup
+  update     Update the CLI, local package, addon, and project guidance
+  self-update
+             Update only the installed Fennara CLI
 
 Options:
   --repair   Create missing base app-data directories during doctor

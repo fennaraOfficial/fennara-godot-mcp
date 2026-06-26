@@ -203,8 +203,10 @@ void output_log(const godot::String &message) {
 }
 
 bool debug_logging_enabled() {
-    const char *value = std::getenv("FENNARA_MAC_WEBVIEW_DEBUG");
-    return value != nullptr && std::string(value) == "1";
+    const char *generic = std::getenv("FENNARA_WEBVIEW_DEBUG");
+    const char *mac = std::getenv("FENNARA_MAC_WEBVIEW_DEBUG");
+    return (generic != nullptr && std::string(generic) == "1") ||
+           (mac != nullptr && std::string(mac) == "1");
 }
 
 void debug_log(const godot::String &message) {
@@ -390,7 +392,10 @@ bool start(void **webview, void **parent_window, godot::Control *owner, const go
         [configuration release];
         [user_content release];
         if (view == nil) {
-            output_log("macOS webview start failed: WKWebView nil");
+            output_log(
+                "macOS webview start failed: WKWebView nil. WebKit.framework is normally "
+                "included with macOS; restart Godot or check the macOS installation. "
+                "Fennara MCP tools still work without the built-in chat dock.");
             return;
         }
 
@@ -526,7 +531,6 @@ public:
 
     bool start(godot::Control *owner, const godot::String &url) override {
         if (started) {
-            output_log("Web chat host already started");
             return true;
         }
 
@@ -534,7 +538,6 @@ public:
             current_url = url;
             started = true;
             resize_to(owner);
-            output_log("Web chat native macOS webview started");
             return true;
         }
         output_error("Web chat native macOS webview could not start");

@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <webview/webview.h>
 
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 
@@ -56,6 +57,19 @@ WebviewGeometry compute_webview_geometry(godot::Control *owner) {
     return geometry;
 }
 
+bool debug_logging_enabled() {
+    const char *generic = std::getenv("FENNARA_WEBVIEW_DEBUG");
+    const char *windows = std::getenv("FENNARA_WINDOWS_WEBVIEW_DEBUG");
+    return (generic != nullptr && std::string(generic) == "1") ||
+           (windows != nullptr && std::string(windows) == "1");
+}
+
+void debug_log(const godot::String &message) {
+    if (debug_logging_enabled()) {
+        output_log(message);
+    }
+}
+
 } // namespace
 
 class WindowsWebviewBackend : public NativeWebviewBackend {
@@ -66,7 +80,7 @@ public:
 
     bool start(godot::Control *owner, const godot::String &url) override {
         if (started) {
-            output_log("Web chat host already started");
+            debug_log("Web chat host already started");
             return true;
         }
 
@@ -85,7 +99,7 @@ public:
         int64_t native_window = display->window_get_native_handle(
             godot::DisplayServer::WINDOW_HANDLE,
             window_id);
-        output_log("Web chat native window id=" + godot::String::num_int64(window_id) +
+        debug_log("Web chat native window id=" + godot::String::num_int64(window_id) +
                    " handle=" + godot::String::num_int64(native_window));
         if (native_window == 0) {
             output_error("Web chat host cannot start: Godot native window handle is 0");
@@ -94,17 +108,22 @@ public:
         current_window_id = window_id;
         parent_window = reinterpret_cast<void *>(native_window);
 
-        output_log("Web chat creating native Windows webview url=" + url);
+        debug_log("Web chat creating native Windows webview url=" + url);
         webview = webview_create(0, parent_window);
         if (webview == nullptr) {
-            output_error("Web chat host cannot start: webview_create returned null");
+            output_error(
+                "Web chat host cannot start: webview_create returned null. "
+                "Microsoft Edge WebView2 Runtime may be missing or unavailable. "
+                "Install WebView2 Evergreen Runtime from "
+                "https://developer.microsoft.com/microsoft-edge/webview2/ "
+                "and restart Godot. Fennara MCP tools still work without the built-in chat dock.");
             return false;
         }
 
         widget = webview_get_native_handle(
             static_cast<webview_t>(webview),
             WEBVIEW_NATIVE_HANDLE_KIND_UI_WIDGET);
-        output_log("Web chat native widget handle=" +
+        debug_log("Web chat native widget handle=" +
                    godot::String::num_int64(reinterpret_cast<int64_t>(widget)));
         if (widget == nullptr) {
             output_error("Web chat host cannot start: native widget handle is null");
@@ -120,7 +139,7 @@ public:
         current_url = url;
         started = true;
         resize_to(owner);
-        output_log("Web chat native Windows webview started");
+        debug_log("Web chat native Windows webview started");
         return true;
     }
 
@@ -143,7 +162,7 @@ public:
 
         int window_id = owner_window_id(owner);
         if (window_id != current_window_id) {
-            output_log("Web chat recreating native Windows webview for window id=" +
+            debug_log("Web chat recreating native Windows webview for window id=" +
                        godot::String::num_int64(window_id));
             godot::String url = current_url;
             stop();
@@ -178,7 +197,7 @@ public:
             last_y = y;
             last_width = geometry.width;
             last_height = geometry.height;
-            output_log("Web chat Windows geometry x=" + godot::String::num_int64(x) +
+            debug_log("Web chat Windows geometry x=" + godot::String::num_int64(x) +
                        " y=" + godot::String::num_int64(y) +
                        " w=" + godot::String::num_int64(geometry.width) +
                        " h=" + godot::String::num_int64(geometry.height));
@@ -197,7 +216,7 @@ public:
             return;
         }
 
-        output_log("Web chat destroying native Windows webview");
+        debug_log("Web chat destroying native Windows webview");
         if (webview != nullptr) {
             webview_destroy(static_cast<webview_t>(webview));
         }

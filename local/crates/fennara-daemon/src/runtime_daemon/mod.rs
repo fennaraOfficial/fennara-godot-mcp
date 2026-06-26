@@ -29,6 +29,9 @@ pub async fn run() {
         .route("/health", get(health))
         .route("/status", get(godot_bridge::status))
         .route("/shutdown", post(shutdown))
+        .route("/chat", get(chat::chat_index_redirect))
+        .route("/chat/", get(chat::chat_index))
+        .route("/chat/{*path}", get(chat::chat_asset))
         .route("/chat/ws", get(chat::chat_ws))
         .route("/tools/call", post(godot_bridge::call_tool))
         .route(

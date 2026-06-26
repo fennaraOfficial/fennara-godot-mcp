@@ -21,6 +21,7 @@
 #include <atomic>
 #include <cstring>
 #include <chrono>
+#include <cstdlib>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -35,8 +36,17 @@ std::string utf8(const godot::String &value) {
     return value.utf8().get_data();
 }
 
+bool debug_logging_enabled() {
+    const char *generic = std::getenv("FENNARA_WEBVIEW_DEBUG");
+    const char *linux_cef = std::getenv("FENNARA_LINUX_CEF_DEBUG");
+    return (generic != nullptr && std::string(generic) == "1") ||
+           (linux_cef != nullptr && std::string(linux_cef) == "1");
+}
+
 void debug_log(const godot::String &message) {
-    webview_backend::output_log("Web chat Linux CEF OSR: " + message);
+    if (debug_logging_enabled()) {
+        webview_backend::output_log("Web chat Linux CEF OSR: " + message);
+    }
 }
 
 int clamp_dimension(double value) {
@@ -275,7 +285,7 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     }
 
     started = true;
-    webview_backend::output_log("Web chat Linux CEF OSR browser started at " + runtime_dir);
+    debug_log("browser started at " + runtime_dir);
     return true;
 }
 

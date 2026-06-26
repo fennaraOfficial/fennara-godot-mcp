@@ -211,6 +211,7 @@
                 </svg>
               </button>
               <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple data-image-input hidden />
+              <input type="hidden" data-model />
               <button
                 class="composer-model-button"
                 type="button"
@@ -218,8 +219,7 @@
                 aria-expanded="false"
                 data-open-model-picker
               >
-                <span class="composer-model-dot" aria-hidden="true"></span>
-                <span data-model-status>openrouter/auto</span>
+                <span data-model-status>No model</span>
               </button>
               <div class="composer-effort-menu" data-effort-menu>
                 <button
@@ -275,8 +275,86 @@
         </div>
       </form>
 
+      <section class="command-popover" data-command-popover hidden>
+        <div class="command-palette" role="listbox" aria-label="Composer commands">
+          <button type="button" role="option" data-command-option="/provider">
+            <strong>/provider</strong>
+            <span>Connect providers</span>
+          </button>
+          <button type="button" role="option" data-command-option="/model">
+            <strong>/model</strong>
+            <span>Select or add a model</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="model-popover" data-provider-popover hidden>
+        <div class="model-picker provider-picker" role="dialog" aria-label="Select provider">
+          <header class="picker-header">
+            <strong>Select provider</strong>
+            <span>esc</span>
+          </header>
+          <label class="model-search-row">
+            <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="M20 20l-3.5-3.5"></path>
+            </svg>
+            <input type="search" placeholder="Search providers..." aria-label="Search providers" data-provider-search />
+          </label>
+          <div class="provider-options" data-provider-options></div>
+        </div>
+      </section>
+
+      <section class="model-popover" data-provider-key-popover hidden>
+        <form class="model-picker provider-picker key-picker" aria-label="Provider API key" data-provider-key-form>
+          <header class="picker-header">
+            <strong data-provider-key-title>API key</strong>
+            <span>esc</span>
+          </header>
+          <div class="provider-key-body">
+            <input type="password" autocomplete="off" placeholder="API key" data-provider-key-inline />
+          </div>
+          <footer class="key-picker-footer">
+            <strong>enter</strong>
+            <span>submit</span>
+          </footer>
+        </form>
+      </section>
+
+      <section class="model-popover" data-ollama-setup-popover hidden>
+        <form class="model-picker provider-picker ollama-setup-picker" aria-label="Local provider server" data-ollama-form>
+          <header class="picker-header">
+            <strong data-local-setup-title>Local provider</strong>
+            <span>esc</span>
+          </header>
+          <div class="ollama-inline-form">
+            <p class="ollama-help" data-local-setup-help>
+              Override the base URL only if your local server uses another URL. Models are listed automatically from the local server.
+            </p>
+            <label>
+              <span>Base URL</span>
+              <input
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                placeholder="http://127.0.0.1:11434"
+                data-ollama-base-url
+              />
+            </label>
+          </div>
+          <footer class="key-picker-footer">
+            <strong>enter</strong>
+            <span>save</span>
+          </footer>
+        </form>
+      </section>
+
       <section class="model-popover" data-model-popover hidden>
-        <div class="model-picker" role="listbox" aria-label="OpenRouter models">
+        <div class="model-picker" role="listbox" aria-label="Chat models">
+          <header class="picker-header">
+            <strong>Select model</strong>
+            <span>esc</span>
+          </header>
           <label class="model-search-row">
             <svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="11" cy="11" r="7"></circle>
@@ -286,10 +364,6 @@
           </label>
           <div class="model-list" data-model-list></div>
           <aside class="model-detail" data-model-detail hidden></aside>
-          <footer class="model-custom-row">
-            <input type="text" placeholder="Exact OpenRouter model id..." data-custom-model />
-            <button class="secondary-button" type="button" data-add-custom-model>Add</button>
-          </footer>
         </div>
       </section>
 
@@ -299,15 +373,19 @@
             <h2>Chat Settings</h2>
             <button class="icon-button" type="submit" aria-label="Close settings">x</button>
           </header>
-          <label>
-            <span>OpenRouter API key</span>
-            <input type="password" autocomplete="off" placeholder="sk-or-..." data-api-key />
-          </label>
-          <p class="settings-status" data-key-status>OpenRouter key not set</p>
-          <p class="settings-note">
-            The key is saved by the local daemon outside the Godot project and is never sent back to this page.
-            Chat requests are sent to OpenRouter by the local daemon.
-          </p>
+          <fieldset class="settings-group">
+            <legend>Chat display</legend>
+            <label class="settings-check">
+              <input type="checkbox" data-chat-surface-browser />
+              <span>Open chat in my system browser next time</span>
+            </label>
+            <p class="settings-note">
+              This keeps the Godot dock lightweight and can reduce editor GPU and memory usage.
+            </p>
+            <p class="settings-status settings-restart" data-chat-surface-restart hidden>
+              Restart Godot for this change to take effect.
+            </p>
+          </fieldset>
           <menu>
             <button class="secondary-button" value="cancel">Cancel</button>
             <button class="primary-button" value="default" data-save-settings>Save locally</button>

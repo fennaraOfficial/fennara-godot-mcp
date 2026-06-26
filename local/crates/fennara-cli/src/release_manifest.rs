@@ -24,15 +24,26 @@ pub struct ReleaseSelection {
     pub shared_runtimes: Vec<Value>,
 }
 
+pub struct CliReleaseSelection {
+    pub version: String,
+    pub cli: ManifestAsset,
+}
+
 impl ReleaseManifest {
     pub fn parse(bytes: &[u8]) -> Result<Self, String> {
         let value: Value = serde_json::from_slice(bytes)
             .map_err(|err| format!("failed to parse release manifest: {err}"))?;
-        let manifest = Self { value };
-        manifest.validate_schema()?;
-        manifest.validate_minimum_cli_version(VERSION)?;
-        manifest.validate_install_primitives()?;
-        Ok(manifest)
+        Ok(Self { value })
+    }
+
+    pub fn validate_for_install(&self) -> Result<(), String> {
+        self.validate_schema()?;
+        self.validate_current_cli()?;
+        self.validate_install_primitives()
+    }
+
+    pub fn validate_current_cli(&self) -> Result<(), String> {
+        self.validate_minimum_cli_version(VERSION)
     }
 
     pub fn select_for_current_platform(&self) -> Result<ReleaseSelection, String> {
@@ -52,6 +63,12 @@ impl ReleaseManifest {
             addon,
             shared_runtimes,
         })
+    }
+
+    pub fn select_cli_for_current_platform(&self) -> Result<CliReleaseSelection, String> {
+        let version = required_string(&self.value, "version")?.to_string();
+        let cli = self.cli_asset_for_current_platform()?;
+        Ok(CliReleaseSelection { version, cli })
     }
 
     fn validate_schema(&self) -> Result<(), String> {
@@ -106,24 +123,36 @@ impl ReleaseManifest {
     }
 
     fn local_asset_for_current_platform(&self) -> Result<ManifestAsset, String> {
-        let local_assets = self
+        self.asset_group_for_current_platform("/assets/local", "assets.local")
+    }
+
+    fn cli_asset_for_current_platform(&self) -> Result<ManifestAsset, String> {
+        self.asset_group_for_current_platform("/assets/cli", "assets.cli")
+    }
+
+    fn asset_group_for_current_platform(
+        &self,
+        pointer: &str,
+        label: &str,
+    ) -> Result<ManifestAsset, String> {
+        let assets = self
             .value
-            .pointer("/assets/local")
-            .ok_or_else(|| "release manifest is missing assets.local".to_string())?;
+            .pointer(pointer)
+            .ok_or_else(|| format!("release manifest is missing {label}"))?;
         let key = current_platform_key();
 
-        if let Some(asset) = local_assets.get(key.as_str()) {
-            return parse_asset(asset, &format!("assets.local.{key}"));
+        if let Some(asset) = assets.get(key.as_str()) {
+            return parse_asset(asset, &format!("{label}.{key}"));
         }
 
-        if let Some(array) = local_assets.as_array() {
-            if let Some(asset) = array.iter().find(|asset| matches_current_platform(asset)) {
-                return parse_asset(asset, "assets.local[]");
-            }
+        if let Some(array) = assets.as_array()
+            && let Some(asset) = array.iter().find(|asset| matches_current_platform(asset))
+        {
+            return parse_asset(asset, &format!("{label}[]"));
         }
 
         Err(format!(
-            "release manifest has no local package asset for {} {} ({key})",
+            "release manifest has no {label} asset for {} {} ({key})",
             platform_name(),
             arch_name()
         ))
@@ -213,7 +242,7 @@ fn current_webview_platform_arch() -> &'static str {
     }
 }
 
-fn compare_versions(left: &str, right: &str) -> Option<Ordering> {
+pub(crate) fn compare_versions(left: &str, right: &str) -> Option<Ordering> {
     Some(parse_semver_core(left)?.cmp(&parse_semver_core(right)?))
 }
 
@@ -251,5 +280,35 @@ mod tests {
             Some(Ordering::Equal)
         );
         assert_eq!(compare_versions("0.3", "0.3.0"), None);
+    }
+
+    #[test]
+    fn selects_cli_asset_before_install_validation() {
+        let key = current_platform_key();
+        let mut cli_assets = serde_json::Map::new();
+        cli_assets.insert(
+            key,
+            serde_json::json!({
+                "name": "fennara-cli-current-platform-v9.0.0.zip",
+                "sha256": "a".repeat(64)
+            }),
+        );
+        let manifest = serde_json::json!({
+            "schema_version": 99,
+            "version": "9.0.0",
+            "minimum_cli_version": "9.0.0",
+            "install_primitives": ["future-primitive"],
+            "assets": {
+                "cli": cli_assets
+            }
+        });
+        let raw = serde_json::to_vec(&manifest).unwrap();
+
+        let parsed = ReleaseManifest::parse(&raw).unwrap();
+        let cli = parsed.select_cli_for_current_platform().unwrap();
+
+        assert_eq!(cli.version, "9.0.0");
+        assert_eq!(cli.cli.name, "fennara-cli-current-platform-v9.0.0.zip");
+        assert!(parsed.validate_for_install().is_err());
     }
 }

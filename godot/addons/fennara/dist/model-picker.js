@@ -5,18 +5,31 @@
     const search = options.search;
     const list = options.list;
     const detail = options.detail;
-    const customInput = options.customInput;
-    const addCustomButton = options.addCustomButton;
     const getCurrentModel = options.getCurrentModel;
+    const getCurrentProvider = options.getCurrentProvider;
+    const getProviders = options.getProviders || (() => []);
+    const isProviderConnected = options.isProviderConnected || (() => false);
+    const providerFromModel = options.providerFromModel || defaultProviderFromModel;
+    const getOllamaModels = options.getOllamaModels;
+    const openProviderPicker = options.openProviderPicker;
+    const openOpenRouterKeyPrompt = options.openOpenRouterKeyPrompt;
+    const openProviderKeyPrompt = options.openProviderKeyPrompt || openOpenRouterKeyPrompt;
     const onSelect = options.onSelect;
+    const onEscapeClose = options.onEscapeClose;
     const onRequestModels = options.onRequestModels;
+    const onRefreshCatalog = options.onRefreshCatalog;
+    const RECENT_MODEL_STORAGE_KEY = "fennara.chat.recentModels";
+    const COLLAPSED_SECTION_STORAGE_KEY = "fennara.chat.collapsedModelSections";
 
     let catalog = [];
-    let live = false;
-    let hoveredModel = null;
+    let catalogStatus = null;
+    let catalogError = "";
+    let refreshing = false;
     let activeIndex = -1;
     let visibleModels = [];
-    let requestedModels = false;
+    let searchFocusTimer = 0;
+    let recentModelIds = loadRecentModelIds();
+    let collapsedSectionKeys = loadCollapsedSectionKeys();
 
     function open() {
       if (!popover || !trigger) {
@@ -24,23 +37,30 @@
       }
       popover.hidden = false;
       trigger.setAttribute("aria-expanded", "true");
-      positionPopover();
-      render();
       requestModels();
-      window.setTimeout(() => search?.focus(), 0);
+      render();
+      positionPopover();
+      window.clearTimeout(searchFocusTimer);
+      searchFocusTimer = window.setTimeout(() => {
+        if (popover.hidden === false) {
+          search?.focus({ preventScroll: true });
+        }
+      }, 0);
       return true;
     }
 
-    function close() {
+    function close(reason = "") {
       if (!popover || popover.hidden) {
         return;
       }
+      window.clearTimeout(searchFocusTimer);
       popover.hidden = true;
       trigger?.setAttribute("aria-expanded", "false");
-      trigger?.removeAttribute("aria-activedescendant");
-      hoveredModel = null;
       activeIndex = -1;
       renderDetail(null);
+      if (reason === "escape") {
+        onEscapeClose?.();
+      }
     }
 
     function toggle() {
@@ -49,7 +69,9 @@
 
     function applyCatalog(nextCatalog) {
       catalog = Array.isArray(nextCatalog?.models) ? nextCatalog.models : [];
-      live = Boolean(nextCatalog?.live);
+      catalogStatus = nextCatalog?.catalog_status || catalogStatus;
+      catalogError = String(nextCatalog?.error || "");
+      refreshing = Boolean(nextCatalog?.refreshing);
       render();
       if (popover && popover.hidden === false) {
         positionPopover();
@@ -57,19 +79,15 @@
     }
 
     function displayName(modelId) {
-      const model = catalog.find((entry) => entry.id === modelId);
+      const model = allModels().find((entry) => entry.id === modelId);
       return model?.display_name || fallbackModelName(modelId);
     }
 
     function modelInfo(modelId) {
-      return catalog.find((entry) => entry.id === modelId) || null;
+      return allModels().find((entry) => entry.id === modelId) || null;
     }
 
     function requestModels() {
-      if (requestedModels) {
-        return;
-      }
-      requestedModels = true;
       onRequestModels?.();
     }
 
@@ -78,139 +96,383 @@
       if (!clean) {
         return;
       }
+      rememberRecentModel(clean);
       onSelect?.(clean);
       close();
+    }
+
+    function allModels() {
+      const models = [];
+      const seen = new Set();
+      for (const model of catalog) {
+        const providerId = modelProviderId(model);
+        const provider = providerMetadata(providerId);
+        if (provider?.auth?.type === "api_key" && !isProviderConnected(providerId)) {
+          continue;
+        }
+        if (provider?.kind === "local" && !modelAvailableFromDaemon(model)) {
+          continue;
+        }
+        if (!seen.has(model.id)) {
+          seen.add(model.id);
+          models.push(model);
+        }
+      }
+      for (const model of getOllamaModels?.() || []) {
+        if (!seen.has(model.id)) {
+          seen.add(model.id);
+          models.push(model);
+        }
+      }
+      return models;
     }
 
     function render() {
       if (!list) {
         return;
       }
+      const provider = getCurrentProvider?.() || "";
       const query = (search?.value || "").trim().toLowerCase();
-      visibleModels = catalog.filter((model) => {
-        if (!query) {
-          return true;
-        }
-        return [model.id, model.display_name, model.provider]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(query));
-      });
+      const models = allModels();
+      const rankedModels = models
+        .map((model, index) => ({ model, index, score: modelSearchScore(model, query) }))
+        .filter((entry) => entry.score < 99)
+        .sort((a, b) => a.score - b.score || a.index - b.index)
+        .map((entry) => entry.model);
       list.replaceChildren();
-      if (!visibleModels.length) {
-        const empty = document.createElement("p");
-        empty.className = "model-empty";
-        empty.textContent = live ? "No matching models." : "Loading OpenRouter models...";
-        list.append(empty);
-        activeIndex = -1;
-        renderDetail(null);
+      renderDetail(null);
+
+      if (!provider && !rankedModels.length) {
+        renderEmpty("Add a model provider before /model.", {
+          label: "Open provider picker",
+          onClick: openProviderPicker,
+        });
         return;
       }
+      if (provider && providerRequiresApiKey(provider) && !isProviderConnected(provider) && !rankedModels.length) {
+        renderEmpty(`${providerLabel(provider)} not connected.`, {
+          label: "Add API key",
+          onClick: () => openProviderKeyPrompt?.(provider),
+        });
+        return;
+      }
+      if (!rankedModels.length) {
+        if (hasConnectedApiKeyProvider() && !query) {
+          renderEmpty(openrouterEmptyMessage(), {
+            label: refreshing ? "" : "Refresh",
+            onClick: () => {
+              refreshing = true;
+              render();
+              onRefreshCatalog?.();
+            },
+          });
+          return;
+        }
+        renderEmpty("No matching models.", null);
+        return;
+      }
+
       const currentModel = getCurrentModel?.() || "";
-      if (activeIndex < 0 || activeIndex >= visibleModels.length) {
+      const sections = modelSections(rankedModels, query, currentModel);
+      const visibleSections = sections.map((section) => ({
+        ...section,
+        collapsed: isSectionCollapsed(section, query),
+      }));
+      visibleModels = visibleSections.flatMap((section) =>
+        section.collapsed ? [] : section.models,
+      );
+      if (!visibleModels.length) {
+        activeIndex = -1;
+      } else if (activeIndex < 0 || activeIndex >= visibleModels.length) {
         activeIndex = Math.max(0, visibleModels.findIndex((model) => model.id === currentModel));
       }
-      visibleModels.forEach((model, index) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.className = "model-row";
-        row.id = "model-option-" + index;
-        row.setAttribute("role", "option");
-        row.dataset.selected = String(model.id === currentModel);
-        row.setAttribute("aria-selected", String(index === activeIndex));
-        row.innerHTML = [
-          '<span class="model-row-main">',
-          `<strong>${escapeHtml(model.display_name || fallbackModelName(model.id))}</strong>`,
-          `<small>${escapeHtml(model.id)}</small>`,
-          "</span>",
-        ].join("");
-        row.addEventListener("mouseenter", () => {
-          activeIndex = index;
-          hoveredModel = model;
-          setActiveDescendant(row.id);
-          markActiveRow();
-          renderDetail(model, row);
-        });
-        row.addEventListener("mouseleave", () => {
-          if (hoveredModel?.id === model.id && document.activeElement !== row) {
-            hoveredModel = null;
-            renderDetail(null);
-          }
-        });
-        row.addEventListener("focus", () => {
-          activeIndex = index;
-          hoveredModel = model;
-          setActiveDescendant(row.id);
-          markActiveRow();
-          renderDetail(model, row);
-        });
-        row.addEventListener("blur", () => {
-          if (hoveredModel?.id === model.id) {
-            hoveredModel = null;
-            renderDetail(null);
-          }
-        });
-        row.addEventListener("click", () => select(model.id));
-        list.append(row);
+      let rowIndex = 0;
+      visibleSections.forEach((section) => {
+        if (section.label) {
+          renderSectionHeading(section, query);
+        }
+        if (!section.collapsed) {
+          section.models.forEach((model) => renderModelRow(model, currentModel, rowIndex++));
+        }
       });
     }
 
-    function renderDetail(model, anchor) {
+    function renderSectionHeading(section, query) {
+      const collapsible = isCollapsibleSection(section, query);
+      if (!collapsible) {
+        const heading = document.createElement("div");
+        heading.className = "model-section-label";
+        heading.textContent = section.label;
+        list.append(heading);
+        return;
+      }
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "model-section-label model-section-toggle";
+      button.setAttribute("aria-expanded", String(!section.collapsed));
+      button.innerHTML = [
+        `<span>${escapeHtml(section.label)}</span>`,
+        '<span class="model-section-chevron" aria-hidden="true"></span>',
+      ].join("");
+      button.addEventListener("click", () => toggleSection(section.key));
+      list.append(button);
+    }
+
+    function renderModelRow(model, currentModel, index) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "model-row";
+      row.id = "model-option-" + index;
+      row.setAttribute("role", "option");
+      row.dataset.selected = String(model.id === currentModel);
+      row.setAttribute("aria-selected", String(index === activeIndex));
+      row.innerHTML = [
+        '<span class="model-row-main">',
+        `<strong>${escapeHtml(model.display_name || fallbackModelName(model.id))}</strong>`,
+        "</span>",
+        `<span class="model-row-provider">${escapeHtml(modelProviderLabel(model))}</span>`,
+      ].join("");
+      row.addEventListener("mouseenter", () => setActive(index));
+      row.addEventListener("focus", () => setActive(index));
+      row.addEventListener("click", () => select(model.id));
+      list.append(row);
+    }
+
+    function modelSections(models, query, currentModel) {
+      const sections = [];
+      const recent = query ? [] : recentModels(models, currentModel);
+      const providerSections = new Map();
+      if (recent.length) {
+        sections.push({ key: "recent", label: "Recent", models: recent });
+      }
+      models.forEach((model) => {
+        const label = modelGroupLabel(model);
+        if (!providerSections.has(label)) {
+          providerSections.set(label, []);
+        }
+        providerSections.get(label).push(model);
+      });
+      providerSections.forEach((sectionModels, label) => {
+        sections.push({ key: "provider:" + label.toLowerCase(), label, models: sectionModels });
+      });
+      return sections;
+    }
+
+    function isCollapsibleSection(section, query) {
+      return !query && section.key !== "recent" && section.models.length > 0;
+    }
+
+    function isSectionCollapsed(section, query) {
+      return isCollapsibleSection(section, query) && collapsedSectionKeys.has(section.key);
+    }
+
+    function toggleSection(key) {
+      if (!key) {
+        return;
+      }
+      if (collapsedSectionKeys.has(key)) {
+        collapsedSectionKeys.delete(key);
+      } else {
+        collapsedSectionKeys.add(key);
+      }
+      saveCollapsedSectionKeys();
+      render();
+      positionPopover();
+    }
+
+    function recentModels(models, currentModel) {
+      const ids = [currentModel, ...recentModelIds].filter(Boolean);
+      const used = new Set();
+      const recent = [];
+      ids.forEach((id) => {
+        if (used.has(id)) {
+          return;
+        }
+        const model = models.find((entry) => entry.id === id);
+        if (!model) {
+          return;
+        }
+        used.add(id);
+        recent.push(model);
+      });
+      return recent.slice(0, 4);
+    }
+
+    function rememberRecentModel(modelId) {
+      recentModelIds = [modelId, ...recentModelIds.filter((id) => id !== modelId)].slice(0, 8);
+      try {
+        window.localStorage?.setItem(RECENT_MODEL_STORAGE_KEY, JSON.stringify(recentModelIds));
+      } catch {
+        // Ignore private-mode/localStorage failures.
+      }
+    }
+
+    function loadRecentModelIds() {
+      try {
+        const raw = window.localStorage?.getItem(RECENT_MODEL_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.map(cleanModelId).filter(Boolean).slice(0, 8) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function loadCollapsedSectionKeys() {
+      try {
+        const raw = window.localStorage?.getItem(COLLAPSED_SECTION_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return new Set(Array.isArray(parsed) ? parsed.filter((key) => typeof key === "string") : []);
+      } catch {
+        return new Set();
+      }
+    }
+
+    function saveCollapsedSectionKeys() {
+      try {
+        window.localStorage?.setItem(
+          COLLAPSED_SECTION_STORAGE_KEY,
+          JSON.stringify(Array.from(collapsedSectionKeys)),
+        );
+      } catch {
+        // Ignore private-mode/localStorage failures.
+      }
+    }
+
+    function modelProviderLabel(model) {
+      return providerLabel(modelProviderId(model)) || model?.provider || "Other";
+    }
+
+    function modelGroupLabel(model) {
+      return modelProviderLabel(model);
+    }
+
+    function modelProviderId(model) {
+      const explicit = String(model?.provider_id || "").trim();
+      if (explicit) {
+        return explicit;
+      }
+      return providerFromModel(String(model?.id || ""));
+    }
+
+    function providerMetadata(providerId) {
+      return getProviders().find((provider) => provider.id === providerId) || null;
+    }
+
+    function providerLabel(providerId) {
+      return providerMetadata(providerId)?.name || "";
+    }
+
+    function providerRequiresApiKey(providerId) {
+      return providerMetadata(providerId)?.auth?.type === "api_key";
+    }
+
+    function hasConnectedApiKeyProvider() {
+      return getProviders().some((provider) => provider.auth?.type === "api_key" && isProviderConnected(provider.id));
+    }
+
+    function modelAvailableFromDaemon(model) {
+      const id = String(model?.id || "");
+      if (!id) {
+        return false;
+      }
+      if (model.source === "local") {
+        return true;
+      }
+      return (getOllamaModels?.() || []).some((entry) => entry.id === id);
+    }
+
+    function modelSearchScore(model, query) {
+      if (!query) {
+        return 0;
+      }
+      return searchScore([model.display_name, searchableModelId(model)], query);
+    }
+
+    function searchScore(values, query) {
+      const normalized = values
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase());
+      if (normalized.some((value) => value === query)) {
+        return 0;
+      }
+      if (normalized.some((value) => value.startsWith(query))) {
+        return 1;
+      }
+      if (normalized.some((value) => value.split(/[\s/:_-]+/).some((part) => part.startsWith(query)))) {
+        return 2;
+      }
+      if (normalized.some((value) => value.includes(query))) {
+        return 3;
+      }
+      return 99;
+    }
+
+    function searchableModelId(model) {
+      const id = String(model?.id || "");
+      const providerId = modelProviderId(model);
+      const prefix = providerId ? providerId + "/" : "";
+      return prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id;
+    }
+
+    function openrouterEmptyMessage() {
+      if (refreshing) {
+        return "Loading catalog models...";
+      }
+      if (catalogStatus?.state === "empty" || catalogError) {
+        return "No catalog models yet.";
+      }
+      return "No catalog models.";
+    }
+
+    function renderEmpty(message, action) {
+      const empty = document.createElement("div");
+      empty.className = "model-empty";
+      const text = document.createElement("p");
+      text.textContent = message;
+      empty.append(text);
+      if (action?.label) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "secondary-button";
+        button.textContent = action.label;
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          action.onClick?.();
+        });
+        empty.append(button);
+      }
+      list.append(empty);
+      activeIndex = -1;
+      renderDetail(null);
+    }
+
+    function setActive(index) {
+      activeIndex = index;
+      markActiveRow();
+    }
+
+    function renderDetail() {
       if (!detail) {
         return;
       }
-      detail.hidden = !model;
-      if (!model) {
-        detail.replaceChildren();
-        return;
-      }
-      const context = model.context_length ? formatNumber(model.context_length) : "unknown";
-      const maxOutput = model.max_output_tokens ? formatNumber(model.max_output_tokens) : "unknown";
-      const input = formatPrice(model.input_cost_per_million);
-      const completion = formatPrice(model.output_cost_per_million);
-      const rows = [
-        ["Context", context],
-        ["Max output", maxOutput],
-        ["Input", input + "/1M"],
-        ["Output", completion + "/1M"],
-      ];
-      if (model.tokens_per_second) {
-        rows.push(["Speed", formatNumber(model.tokens_per_second) + " tok/s"]);
-      }
-      detail.innerHTML = [
-        '<div class="model-detail-title">',
-        `<strong>${escapeHtml(model.display_name || fallbackModelName(model.id))}</strong>`,
-        `<code>${escapeHtml(model.id)}</code>`,
-        "</div>",
-        '<div class="model-detail-grid">',
-        ...rows.map(([label, value]) => `<span>${escapeHtml(label)} <b>${escapeHtml(value)}</b></span>`),
-        "</div>",
-      ].join("");
-      positionDetail(anchor);
+      detail.hidden = true;
+      detail.replaceChildren();
     }
 
     function positionPopover() {
-      if (!popover || !trigger) {
+      if (!popover) {
         return;
       }
-      const gap = 8;
       const viewportPad = 10;
-      const triggerRect = trigger.getBoundingClientRect();
-      const width = Math.min(360, Math.max(280, window.innerWidth - viewportPad * 2));
-      const left = Math.min(
-        Math.max(viewportPad, triggerRect.left),
-        window.innerWidth - width - viewportPad,
-      );
-      const spaceAbove = triggerRect.top - viewportPad - gap;
-      const spaceBelow = window.innerHeight - triggerRect.bottom - viewportPad - gap;
-      const openUp = spaceAbove >= 260 || spaceAbove > spaceBelow;
-      const maxHeight = Math.max(220, Math.min(430, (openUp ? spaceAbove : spaceBelow)));
+      const width = Math.min(560, Math.max(300, window.innerWidth - viewportPad * 2));
+      const maxHeight = Math.min(470, window.innerHeight - viewportPad * 2);
       popover.style.width = width + "px";
       popover.style.maxHeight = maxHeight + "px";
-      popover.style.left = left + "px";
-      popover.style.top = openUp
-        ? Math.max(viewportPad, triggerRect.top - gap - Math.min(maxHeight, popover.offsetHeight || maxHeight)) + "px"
-        : Math.min(window.innerHeight - viewportPad, triggerRect.bottom + gap) + "px";
-      popover.dataset.side = openUp ? "top" : "bottom";
+      popover.style.left = "50%";
+      popover.style.top = "50%";
+      popover.style.transform = "translate(-50%, -50%)";
+      popover.dataset.side = "center";
     }
 
     function positionDetail(anchor) {
@@ -220,27 +482,10 @@
       const gap = 10;
       const viewportPad = 10;
       const anchorRect = anchor.getBoundingClientRect();
-      const popoverRect = popover?.getBoundingClientRect();
       const width = Math.min(320, Math.max(230, window.innerWidth - viewportPad * 2));
       detail.style.width = width + "px";
-      const detailHeight = detail.offsetHeight || 112;
-      const rightSpace = window.innerWidth - anchorRect.right - viewportPad - gap;
-      const leftSpace = anchorRect.left - viewportPad - gap;
-      let left;
-      if (rightSpace >= width || rightSpace >= leftSpace) {
-        left = Math.min(anchorRect.right + gap, window.innerWidth - viewportPad - width);
-      } else {
-        left = Math.max(viewportPad, anchorRect.left - gap - width);
-      }
-      const minTop = viewportPad;
-      const maxTop = window.innerHeight - viewportPad - detailHeight;
-      let top = anchorRect.top + (anchorRect.height - detailHeight) / 2;
-      if (popoverRect) {
-        top = Math.max(top, popoverRect.top);
-      }
-      top = Math.min(Math.max(minTop, top), Math.max(minTop, maxTop));
-      detail.style.left = Math.round(left) + "px";
-      detail.style.top = Math.round(top) + "px";
+      detail.style.left = Math.min(anchorRect.right + gap, window.innerWidth - viewportPad - width) + "px";
+      detail.style.top = Math.max(viewportPad, anchorRect.top) + "px";
     }
 
     function moveActive(delta) {
@@ -248,10 +493,8 @@
         return;
       }
       activeIndex = (activeIndex + delta + visibleModels.length) % visibleModels.length;
-      hoveredModel = visibleModels[activeIndex];
-      markActiveRow();
       const row = list?.querySelectorAll(".model-row")?.[activeIndex];
-      renderDetail(hoveredModel, row);
+      markActiveRow();
     }
 
     function markActiveRow() {
@@ -260,14 +503,9 @@
         const active = index === activeIndex;
         row.setAttribute("aria-selected", String(active));
         if (active) {
-          setActiveDescendant(row.id);
           row.scrollIntoView({ block: "nearest" });
         }
       });
-    }
-
-    function setActiveDescendant(id) {
-      trigger?.setAttribute("aria-activedescendant", id);
     }
 
     search?.addEventListener("input", render);
@@ -283,7 +521,8 @@
         select(visibleModels[activeIndex]?.id);
       } else if (event.key === "Escape") {
         event.preventDefault();
-        close();
+        event.stopPropagation();
+        close("escape");
       }
     });
     trigger?.addEventListener("keydown", (event) => {
@@ -291,7 +530,9 @@
         event.preventDefault();
         open();
       } else if (event.key === "Escape") {
-        close();
+        event.preventDefault();
+        event.stopPropagation();
+        close("escape");
       }
     });
     document.addEventListener("pointerdown", (event) => {
@@ -305,17 +546,6 @@
     });
     window.addEventListener("resize", positionPopover);
     window.addEventListener("scroll", positionPopover, true);
-    addCustomButton?.addEventListener("click", () => {
-      const modelId = cleanModelId(customInput?.value || "");
-      if (!modelId) {
-        return;
-      }
-      select(modelId);
-      if (customInput) {
-        customInput.value = "";
-      }
-    });
-
     return { open, close, toggle, applyCatalog, displayName, modelInfo, requestModels };
   }
 
@@ -323,21 +553,33 @@
     return String(modelId || "").trim().replace(/:nitro\s*$/i, "");
   }
 
+  function defaultProviderFromModel(modelId) {
+    const clean = cleanModelId(modelId);
+    if (clean.startsWith("ollama-cloud/")) {
+      return "ollama-cloud";
+    }
+    if (clean.startsWith("ollama/")) {
+      return "ollama";
+    }
+    if (clean.startsWith("lmstudio/")) {
+      return "lmstudio";
+    }
+    if (clean.startsWith("deepseek/")) {
+      return "deepseek";
+    }
+    if (clean.startsWith("openrouter/") || clean.includes("/")) {
+      return "openrouter";
+    }
+    return "";
+  }
+
   function fallbackModelName(modelId) {
-    return String(modelId || "openrouter/auto")
+    return String(modelId || "")
       .replace(/^~/, "")
       .split("/")
       .pop()
       .replace(/-/g, " ")
-      .replace(/\blatest\b/gi, "Latest");
-  }
-
-  function formatPrice(value) {
-    const price = Number(value);
-    if (!Number.isFinite(price)) return "unknown";
-    if (price < 0.01) return "$" + price.toFixed(4);
-    if (price < 1) return "$" + price.toFixed(3);
-    return "$" + price.toFixed(2);
+      .replace(/\blatest\b/gi, "Latest") || "No model";
   }
 
   function formatNumber(value) {

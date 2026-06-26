@@ -3,7 +3,7 @@ use crate::app_layout::{
     AppLayout, arch_name, binary_name, display_path, platform_name, read_current_manifest,
     resolve_manifest_path,
 };
-use crate::webview_runtime;
+use crate::webview_prereq;
 use serde_json::Value;
 use std::path::Path;
 
@@ -58,7 +58,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
         arch_name()
     );
     println!("release addon asset hint: fennara-release-addon-v{VERSION}.zip");
-    webview_runtime::report_for_doctor(&layout, repair)?;
+    webview_prereq::report_for_doctor(&layout, repair)?;
 
     if repair {
         println!("repair: base directories ensured");

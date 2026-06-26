@@ -30,6 +30,24 @@ Use Fennara MCP to inspect the latest Godot runtime errors, find the likely sour
 Use Fennara MCP to capture a screenshot of the current scene, inspect the UI layout, and suggest or make a small fix if something is visibly wrong.
 ```
 
+## Built-In Chat Provider Setup
+
+In the Fennara dock inside Godot:
+
+```text
+/provider
+```
+
+Connect a cloud provider or local provider.
+
+Then:
+
+```text
+/model
+```
+
+Pick the model the dock should use.
+
 ## Existing Project Demo Prompt
 
 This is the kind of prompt used for the Open RPG demo:

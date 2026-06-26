@@ -1,15 +1,18 @@
 #include "fennara/ui/dock.hpp"
 
+#include "fennara/app_paths.hpp"
 #include "fennara/local_bridge.hpp"
 #include "fennara/logger.hpp"
 #include "fennara/ui/webview_host.hpp"
 
-#include <godot_cpp/classes/margin_container.hpp>
+#include <godot_cpp/classes/h_box_container.hpp>
 #include <godot_cpp/classes/input_event_mouse_button.hpp>
+#include <godot_cpp/classes/margin_container.hpp>
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
+#include <godot_cpp/classes/v_box_container.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -40,6 +43,12 @@ void FennaraDock::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("_on_mcp_target_state_changed", "active"),
         &FennaraDock::_on_mcp_target_state_changed);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("_on_open_browser_pressed"),
+        &FennaraDock::_on_open_browser_pressed);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("_on_use_embedded_toggled", "pressed"),
+        &FennaraDock::_on_use_embedded_toggled);
 }
 
 FennaraDock::FennaraDock() {
@@ -72,7 +81,6 @@ void FennaraDock::_ready() {
     _build_ui();
     startup_delay = STARTUP_GEOMETRY_DELAY_SECONDS;
     set_process(true);
-    _output_log("Web chat dock ready");
 }
 
 void FennaraDock::_process(double delta) {
@@ -160,6 +168,49 @@ void FennaraDock::_build_ui() {
     fallback_label->set_anchors_preset(godot::Control::PRESET_FULL_RECT);
     margin->add_child(fallback_label);
 
+    browser_fallback_panel = memnew(godot::VBoxContainer);
+    browser_fallback_panel->set_anchors_preset(godot::Control::PRESET_FULL_RECT);
+    browser_fallback_panel->set_h_size_flags(godot::Control::SIZE_EXPAND_FILL);
+    browser_fallback_panel->set_v_size_flags(godot::Control::SIZE_EXPAND_FILL);
+    browser_fallback_panel->set_mouse_filter(godot::Control::MOUSE_FILTER_PASS);
+    godot::VBoxContainer *browser_vbox = godot::Object::cast_to<godot::VBoxContainer>(browser_fallback_panel);
+    if (browser_vbox != nullptr) {
+        browser_vbox->set_alignment(godot::BoxContainer::ALIGNMENT_CENTER);
+        browser_vbox->add_theme_constant_override("separation", 8);
+    }
+
+    browser_fallback_message = make_fallback_label(
+        "Fennara chat is using your system browser to reduce Godot GPU and memory usage.");
+    browser_fallback_message->set_v_size_flags(godot::Control::SIZE_SHRINK_CENTER);
+    browser_fallback_message->set_custom_minimum_size(godot::Vector2(320, 70));
+    browser_fallback_panel->add_child(browser_fallback_message);
+
+    godot::HBoxContainer *browser_buttons = memnew(godot::HBoxContainer);
+    browser_buttons->set_h_size_flags(godot::Control::SIZE_SHRINK_CENTER);
+    browser_buttons->add_theme_constant_override("separation", 8);
+    browser_fallback_panel->add_child(browser_buttons);
+
+    open_browser_button = memnew(godot::Button);
+    open_browser_button->set_text("Open chat");
+    open_browser_button->set_tooltip_text("Open Fennara chat in your system browser");
+    open_browser_button->connect("pressed", callable_mp(this, &FennaraDock::_on_open_browser_pressed));
+    browser_buttons->add_child(open_browser_button);
+
+    use_embedded_checkbox = memnew(godot::CheckBox);
+    use_embedded_checkbox->set_text("Open embedded chat in Godot next time");
+    use_embedded_checkbox->set_h_size_flags(godot::Control::SIZE_SHRINK_CENTER);
+    use_embedded_checkbox->connect("toggled", callable_mp(this, &FennaraDock::_on_use_embedded_toggled));
+    browser_fallback_panel->add_child(use_embedded_checkbox);
+
+    browser_restart_label = make_fallback_label("Restart Godot for this change to take effect.");
+    browser_restart_label->set_v_size_flags(godot::Control::SIZE_SHRINK_CENTER);
+    browser_restart_label->set_custom_minimum_size(godot::Vector2(320, 36));
+    browser_restart_label->set_visible(false);
+    browser_fallback_panel->add_child(browser_restart_label);
+
+    browser_fallback_panel->set_visible(false);
+    margin->add_child(browser_fallback_panel);
+
     if (webview_host && webview_host->uses_internal_surface()) {
         internal_webview_surface = webview_host->create_internal_control();
         if (internal_webview_surface != nullptr) {
@@ -169,6 +220,7 @@ void FennaraDock::_build_ui() {
             internal_webview_surface->set_mouse_filter(godot::Control::MOUSE_FILTER_PASS);
             margin->add_child(internal_webview_surface);
             margin->move_child(fallback_label, margin->get_child_count() - 1);
+            margin->move_child(browser_fallback_panel, margin->get_child_count() - 1);
         }
     }
 }
@@ -181,25 +233,27 @@ void FennaraDock::_try_start_webview() {
     godot::OS *os = godot::OS::get_singleton();
     bool native_webview_disabled =
         os != nullptr && os->get_environment("FENNARA_DISABLE_NATIVE_WEBVIEW") == "1";
-    if (native_webview_disabled) {
-        attempted_webview = true;
-        if (fallback_label) {
-            fallback_label->set_text(
-                "Fennara chat UI is packaged, but the native webview host is disabled by environment.");
+
+    if (_chat_surface_prefers_browser() || native_webview_disabled) {
+        godot::String url = _browser_chat_url();
+        if (url.is_empty()) {
+            return;
         }
-        _output_log("Web chat native host disabled by FENNARA_DISABLE_NATIVE_WEBVIEW=1");
+        attempted_webview = true;
+        browser_chat_url = url;
+        _show_browser_fallback(
+            native_webview_disabled
+                ? "Fennara native webview is disabled. Use the system browser for this session."
+                : "Fennara chat is using your system browser to reduce Godot GPU and memory usage.");
+        if (native_webview_disabled) {
+            _output_log("Web chat native host disabled by FENNARA_DISABLE_NATIVE_WEBVIEW=1");
+        }
         return;
     }
 
     godot::Control *owner = webview_region ? webview_region : this;
     godot::Vector2 owner_size = owner->get_size();
     if (owner_size.x < 240 || owner_size.y < 240) {
-        if (!logged_waiting_for_size) {
-            logged_waiting_for_size = true;
-            _output_log("Web chat waiting for dock size, current=" +
-                        godot::String::num(owner_size.x) + "x" +
-                        godot::String::num(owner_size.y));
-        }
         return;
     }
     if (!_webview_region_is_stable()) {
@@ -217,13 +271,17 @@ void FennaraDock::_try_start_webview() {
     }
 
     godot::String url = _chat_url();
-    _output_log("Web chat starting url=" + url);
     if (!webview_host->start(owner, url)) {
         if (internal_webview_surface) {
             internal_webview_surface->set_visible(false);
         }
-        if (fallback_label) {
-            fallback_label->set_text("Fennara chat could not start. Check the Godot Output panel for details.");
+        godot::String browser_url = _browser_chat_url();
+        if (!browser_url.is_empty()) {
+            browser_chat_url = browser_url;
+            _show_browser_fallback("Fennara native chat could not start. Use the system browser for this session.");
+        } else if (fallback_label) {
+            fallback_label->set_text(
+                "Fennara chat could not start. Check the Godot Output panel for details.");
         }
         return;
     }
@@ -234,7 +292,9 @@ void FennaraDock::_try_start_webview() {
     if (fallback_label) {
         fallback_label->set_visible(false);
     }
-    _output_log("Web chat started");
+    if (browser_fallback_panel) {
+        browser_fallback_panel->set_visible(false);
+    }
 }
 
 void FennaraDock::_refresh_status() {
@@ -247,6 +307,43 @@ void FennaraDock::_refresh_status() {
 void FennaraDock::_on_mcp_target_state_changed(bool active) {
     (void)active;
     _refresh_status();
+}
+
+void FennaraDock::_on_open_browser_pressed() {
+    if (browser_chat_url.is_empty()) {
+        return;
+    }
+
+    godot::OS *os = godot::OS::get_singleton();
+    if (os != nullptr) {
+        os->shell_open(browser_chat_url);
+    }
+    if (browser_fallback_message != nullptr) {
+        browser_fallback_message->set_text("Opened chat in your system browser.");
+    }
+}
+
+void FennaraDock::_on_use_embedded_toggled(bool pressed) {
+    const godot::String next_surface = pressed ? "embedded" : "browser";
+    if (!_save_chat_surface(next_surface)) {
+        if (use_embedded_checkbox != nullptr) {
+            use_embedded_checkbox->set_pressed_no_signal(!pressed);
+        }
+        if (browser_fallback_message != nullptr) {
+            browser_fallback_message->set_text("Could not save chat display setting.");
+        }
+        return;
+    }
+
+    if (browser_fallback_message != nullptr) {
+        browser_fallback_message->set_text(
+            pressed
+                ? "Embedded chat will open in Godot next time."
+                : "Fennara chat will keep using your system browser.");
+    }
+    if (browser_restart_label != nullptr) {
+        browser_restart_label->set_visible(pressed);
+    }
 }
 
 godot::String FennaraDock::_chat_url() const {
@@ -267,6 +364,53 @@ godot::String FennaraDock::_chat_url() const {
     return url;
 }
 
+godot::String FennaraDock::_browser_chat_url() const {
+    if (local_bridge == nullptr || local_bridge->get_chat_token().is_empty()) {
+        return "";
+    }
+    return "http://127.0.0.1:41287/chat/?chat_token=" + local_bridge->get_chat_token();
+}
+
+bool FennaraDock::_chat_surface_prefers_browser() const {
+    godot::Dictionary settings = app_paths::read_json_first_existing(
+        app_paths::chat_settings_read_paths());
+    const godot::String surface = godot::String(settings.get("chat_surface", "embedded")).to_lower();
+    return surface == "browser";
+}
+
+bool FennaraDock::_save_chat_surface(const godot::String &surface) const {
+    godot::Dictionary settings = app_paths::read_json_first_existing(
+        app_paths::chat_settings_read_paths());
+    settings["chat_surface"] = surface;
+    return app_paths::write_json(app_paths::chat_settings_path(), settings);
+}
+
+void FennaraDock::_show_browser_fallback(const godot::String &message) {
+    if (internal_webview_surface != nullptr) {
+        internal_webview_surface->set_visible(false);
+    }
+    if (fallback_label != nullptr) {
+        fallback_label->set_visible(false);
+    }
+    if (browser_fallback_panel != nullptr) {
+        browser_fallback_panel->set_visible(true);
+    }
+    if (open_browser_button != nullptr) {
+        open_browser_button->set_disabled(browser_chat_url.is_empty());
+        open_browser_button->set_tooltip_text("Open Fennara chat in your system browser");
+    }
+    if (use_embedded_checkbox != nullptr) {
+        use_embedded_checkbox->set_disabled(false);
+        use_embedded_checkbox->set_pressed_no_signal(false);
+    }
+    if (browser_restart_label != nullptr) {
+        browser_restart_label->set_visible(false);
+    }
+    if (browser_fallback_message != nullptr) {
+        browser_fallback_message->set_text(message);
+    }
+}
+
 bool FennaraDock::_webview_region_is_stable() {
     godot::Control *owner = webview_region ? webview_region : this;
     godot::Vector2 position = owner->get_screen_position();
@@ -279,11 +423,6 @@ bool FennaraDock::_webview_region_is_stable() {
         last_region_position = position;
         last_region_size = size;
         stable_geometry_frames = 0;
-        _output_log("Web chat waiting for stable dock geometry x=" +
-                    godot::String::num(position.x) +
-                    " y=" + godot::String::num(position.y) +
-                    " w=" + godot::String::num(size.x) +
-                    " h=" + godot::String::num(size.y));
         return false;
     }
 

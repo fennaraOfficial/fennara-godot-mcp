@@ -151,6 +151,20 @@ godot::String daemon_binary_path() {
     return paths.is_empty() ? godot::String() : paths[0].path_join("bin").path_join(name);
 }
 
+godot::String chat_settings_path() {
+    const godot::String dir = app_dir();
+    return dir.is_empty() ? godot::String() : dir.path_join("chat_settings.json");
+}
+
+godot::PackedStringArray chat_settings_read_paths() {
+    godot::PackedStringArray paths;
+    const godot::PackedStringArray dirs = app_dir_candidates();
+    for (int i = 0; i < dirs.size(); i++) {
+        append_if_present(paths, dirs[i].path_join("chat_settings.json"));
+    }
+    return paths;
+}
+
 godot::String docs_cache_dir() {
     const godot::String dir = app_dir();
     return dir.is_empty() ? godot::String() : dir.path_join(".cache").path_join("godot_docs");

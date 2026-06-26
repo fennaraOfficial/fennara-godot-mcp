@@ -162,20 +162,48 @@
     }
 
     function updateThinkingText(text, status) {
+      const cleanText = String(text || "").trim();
+      if (!cleanText && !activeThinking) {
+        return;
+      }
       const shouldStick = isNearBottom();
       const card = activeThinking || startThinkingCard();
+      const body = card.querySelector(".thinking-body");
+      if (!cleanText && body && !body.textContent.trim()) {
+        if (status === "done") {
+          card.remove();
+          activeThinking = null;
+        }
+        return;
+      }
       card.classList.toggle("done", status === "done");
       if (status === "done") {
         card.open = false;
       }
-      const body = card.querySelector(".thinking-body");
       if (body) {
-        renderMarkdown(body, text || "");
+        renderMarkdown(body, cleanText);
       }
       keepBottomIfNeeded(shouldStick);
     }
 
+    function finishActiveThinking() {
+      if (!activeThinking) {
+        return;
+      }
+      const body = activeThinking.querySelector(".thinking-body");
+      if (!body || !body.textContent.trim()) {
+        activeThinking.remove();
+        activeThinking = null;
+        return;
+      }
+      activeThinking.classList.add("done");
+      activeThinking.open = false;
+    }
+
     function appendStoredThinking(text) {
+      if (!String(text || "").trim()) {
+        return;
+      }
       const previous = activeThinking;
       activeThinking = null;
       updateThinkingText(text, "done");
@@ -309,17 +337,6 @@
         flashCopied(copy, "Copy message", "Copied message");
       });
       actions.append(copy);
-
-      const price = formatUsageCost?.(usage);
-      if (price) {
-        const dot = document.createElement("span");
-        dot.className = "message-action-dot";
-        dot.textContent = "•";
-        const cost = document.createElement("span");
-        cost.className = "message-cost";
-        cost.textContent = price;
-        actions.append(dot, cost);
-      }
 
       message.append(actions);
     }
@@ -456,6 +473,7 @@
       clear,
       clearSystemStatus,
       flashCopied,
+      finishActiveThinking,
       openImagePreview,
       renderMarkdown,
       resetActiveAssistant,

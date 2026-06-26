@@ -193,14 +193,6 @@
   color: var(--success);
 }
 
-.message-action-dot {
-  color: var(--faint);
-}
-
-.message-cost {
-  color: var(--muted);
-}
-
 .markdown-body {
   min-width: 0;
   max-width: 100%;
@@ -782,10 +774,10 @@ input,
 
 .composer-model-button {
   display: inline-flex;
-  gap: 7px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
-  max-width: min(48vw, 300px);
+  max-width: min(30vw, 220px);
   min-height: 30px;
   padding: 0 8px;
   border: 1px solid transparent;
@@ -819,6 +811,13 @@ input,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer-model-label {
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .composer-usage {
@@ -901,7 +900,15 @@ input,
   width: 7px;
   height: 7px;
   border-radius: 50%;
+  background: var(--faint);
+}
+
+.composer-model-dot.is-ready {
   background: var(--success);
+}
+
+.composer-model-dot.is-idle {
+  background: var(--warning);
 }
 
 .composer-effort-menu {

@@ -9,6 +9,7 @@
 #include "fennara/update_notice.hpp"
 
 #include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 namespace fennara {
 

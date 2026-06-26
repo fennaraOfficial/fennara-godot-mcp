@@ -169,8 +169,11 @@ package layout or asset name changes should be handled by manifest data, not by
 changing the outer CLI. Raise `minimum_cli_version` only when a release needs a
 new manifest schema or install primitive that older CLIs truly cannot perform.
 
-When the CLI is too old, it should fail before installing packages and print a
-clear instruction to rerun `install.sh` or `install.ps1`.
+When the CLI is too old, `fennara update` should use the manifest's
+per-platform `assets.cli` entry to update the installed CLI first, then resume
+the package update with `--no-self-update`. If self-update is not available for
+that release or install location, it should fail before installing packages and
+print a clear instruction to rerun `install.sh` or `install.ps1`.
 
 The shared addon zip contains every built GDExtension binary referenced by `godot/addons/fennara/fennara.gdextension`. Godot loads the matching library for the user's OS and ignores the others.
 
@@ -281,7 +284,8 @@ When release packaging builds the CLI, those templates are compiled into the bin
 `latest` is the moving release used by normal install and update flows.
 
 - `install.ps1` and `install.sh` fetch the latest CLI asset by default.
-- `fennara install` and `fennara update` fetch the release manifest from `latest` by default, then resolve local/addon/shared runtime assets from it.
+- `fennara update` fetches the release manifest from `latest` by default, self-updates the installed CLI when needed, then resolves local/addon/shared runtime assets from it.
+- `fennara install` fetches the release manifest from `latest` by default, then resolves local/addon/shared runtime assets from it.
 - The Godot plugin update check compares against GitHub's latest release.
 
 Use `promote_latest: false` only when publishing a version that should not become the default user install.
@@ -322,6 +326,7 @@ Update test:
 ```bash
 cd path/to/your-godot-project
 fennara update
+fennara self-update
 ```
 
 ## Rules

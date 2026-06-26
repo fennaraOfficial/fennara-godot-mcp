@@ -27,9 +27,10 @@ This is the quick map for contributors and coding agents working in this reposit
 
 | Path | Owns |
 | --- | --- |
-| `local/crates/fennara-cli/` | `fennara` command: install, update, doctor, C# support, MCP app setup, and generated project guidance. |
+| `local/crates/fennara-cli/` | `fennara` command: install, update, CLI self-update, doctor, webview prerequisite checks, C# support, MCP app setup, and generated project guidance. |
 | `local/crates/fennara-mcp/` | Local stdio MCP server and tool schema forwarding. |
 | `local/crates/fennara-daemon/` | Local daemon used for runtime sessions and Godot bridge work. |
+| `local/crates/fennara-daemon/src/runtime_daemon/chat/providers/` | Built-in chat provider runtime primitives, catalog/resolution, context preflight hooks, normalized stream/error types, and OpenAI-compatible adapters for OpenRouter, Ollama Cloud, DeepSeek, Z.AI, Ollama/local, and LM Studio. |
 | `local/schemas/tools/` | MCP tool JSON schemas embedded into the local MCP server. |
 | `local/webview-runtimes/linux-cef.json` | Linux CEF runtime placeholder/generated manifest used for release manifest generation, doctor output, and legacy fallback. It records the shared app-data layout and archive metadata without placing CEF inside the addon zip. |
 | `local/Cargo.toml` | Rust workspace config. |
@@ -88,15 +89,17 @@ This is the quick map for contributors and coding agents working in this reposit
 | Add or change a Godot tool | `fennara-cpp/src/tools/` and `local/schemas/tools/` |
 | Change MCP schema text | `local/schemas/tools/` |
 | Change `fennara install` or `fennara update` | `local/crates/fennara-cli/src/` |
+| Change webview prerequisite checks | `local/crates/fennara-cli/src/webview_prereq.rs`, `local/crates/fennara-cli/src/webview_runtime.rs`, and `fennara-cpp/src/ui/webview_host*` |
 | Change generated project guidance | `local/templates/` and `local/crates/fennara-cli/src/project_guidance.rs` |
 | Change MCP app setup | `local/crates/fennara-cli/src/mcp_setup.rs` |
 | Change runtime session behavior | `fennara-cpp/src/tools/runtime_session/` and `local/crates/fennara-daemon/` |
-| Change in-editor chat UI | `ui/chat/`, `godot/addons/fennara/dist/`, `fennara-cpp/src/ui/dock.cpp`, and `fennara-cpp/src/ui/webview_host*` |
+| Change in-editor chat UI, slash commands, or model/provider picker | `ui/chat/`, `godot/addons/fennara/dist/`, `fennara-cpp/src/ui/dock.cpp`, and `fennara-cpp/src/ui/webview_host*` |
+| Change built-in chat providers | `local/crates/fennara-daemon/src/runtime_daemon/chat/providers/`, `local/crates/fennara-daemon/src/runtime_daemon/chat/models.rs`, `local/crates/fennara-daemon/src/runtime_daemon/chat/settings.rs`, and `ui/chat/` |
 | Change vendored chat UI libraries | `ui/chat/vendor/`, `godot/addons/fennara/dist/vendor/`, and `THIRD_PARTY_NOTICES.md` |
 | Change C# support | `fennara-cpp/src/lsp/` and `local/crates/fennara-cli/src/csharp_support.rs` |
-| Change release packages | `local/crates/fennara-cli/src/release_manifest.rs`, `local/crates/fennara-cli/src/release_package.rs`, `scripts/package-preview.mjs`, `scripts/write-release-manifest.mjs`, and `.github/workflows/release.yml` |
+| Change release packages or CLI self-update | `local/crates/fennara-cli/src/release_manifest.rs`, `local/crates/fennara-cli/src/release_client.rs`, `local/crates/fennara-cli/src/release_package.rs`, `local/crates/fennara-cli/src/self_update.rs`, `scripts/package-preview.mjs`, `scripts/write-release-manifest.mjs`, and `.github/workflows/release.yml` |
 | Bump version | `node scripts/set-version.mjs <version>` |
-| Update setup docs | `README.md`, `docs/setup.md`, and `docs/manual-install.md` |
+| Update setup/docs for chat vs MCP, providers, or slash commands | `README.md`, `docs/chat-vs-mcp.md`, `docs/providers.md`, `docs/slash-commands.md`, `docs/setup.md`, `docs/faq.md`, `docs/manual-install.md`, `docs/tools.md`, `docs/examples.md`, and `llms.txt` |
 
 ## Notes
 

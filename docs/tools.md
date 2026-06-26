@@ -39,6 +39,14 @@ These are the tools exposed to external MCP clients through the local
 The in-editor Fennara chat uses the same local daemon and can call the same
 Godot-side tools, including `read_file` and `file_ops`.
 
+It does not use the external MCP app's model account. Claude Code, Codex,
+Cursor, Gemini, and other MCP clients use their own model setup when they call
+Fennara over MCP. The built-in dock uses the provider configured in Fennara chat
+settings.
+
+The dock also has UI slash commands: `/provider` opens provider setup and
+`/model` opens model selection. These are not MCP tools.
+
 The difference is presentation, not tool identity. External MCP clients receive
 compact markdown tool results over MCP. The built-in chat may add UI-specific
 handling around the same raw results, such as showing image previews from

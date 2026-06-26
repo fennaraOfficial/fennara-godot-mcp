@@ -40,11 +40,43 @@
   line-height: 1.4;
 }
 
+.settings-group {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.settings-group legend {
+  padding: 0 4px;
+  color: var(--muted);
+}
+
+.settings-panel .settings-check {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.settings-check input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
 .settings-status {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.settings-restart {
+  color: var(--accent);
 }
 
 .settings-panel menu {

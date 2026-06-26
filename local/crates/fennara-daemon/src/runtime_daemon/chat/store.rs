@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 
 use super::{
     ids::{new_id, now_ms},
-    images::{self, ChatImage, MAX_TOTAL_IMAGE_BYTES},
-    schema::{connection, to_store_error},
+    images::{self, ImagePlaceholder},
+    schema::{ModelTrace, connection, model_trace_from_selection, to_store_error},
     settings::{self, DEFAULT_MODEL},
 };
 
@@ -69,6 +69,11 @@ pub(crate) struct OpenedChat {
     pub(crate) messages: Vec<StoredMessage>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct StartedGeneration {
+    pub(crate) id: String,
+}
+
 pub(crate) fn list_chats(scope: &ProjectScope) -> Result<Vec<ChatSummary>, String> {
     let conn = connection()?;
     let mut statement = conn
@@ -126,15 +131,26 @@ pub(crate) fn create_chat(
     let chat_id = new_id("chat");
     let clean_model = settings::clean_model(model).unwrap_or_else(|| DEFAULT_MODEL.to_string());
     let clean_effort = settings::clean_reasoning_effort(reasoning_effort);
+    let model_trace = model_trace_from_selection(&clean_model);
     conn.execute(
         "INSERT INTO chats
-         (id, title, project_path, project_name, model, reasoning_effort, total_cost, latest_prompt_tokens, message_count, created_at_ms, updated_at_ms)
-         VALUES (?1, 'New chat', ?2, ?3, ?4, ?5, 0, 0, 0, ?6, ?6)",
+         (id, title, project_path, project_name, model,
+          provider_id, model_id, model_variant, model_ref_json,
+          reasoning_effort, total_cost, latest_prompt_tokens, message_count, created_at_ms, updated_at_ms)
+         VALUES (?1, 'New chat', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, 0, 0, ?10, ?10)",
         params![
             chat_id,
             scope.project_path.as_deref(),
             scope.project_name.as_deref(),
             clean_model,
+            model_trace.as_ref().map(|trace| trace.provider_id.as_str()),
+            model_trace.as_ref().map(|trace| trace.model_id.as_str()),
+            model_trace
+                .as_ref()
+                .and_then(|trace| trace.model_variant.as_deref()),
+            model_trace
+                .as_ref()
+                .map(|trace| trace.model_ref_json.as_str()),
             clean_effort,
             now
         ],
@@ -231,6 +247,48 @@ pub(crate) fn ensure_chat_in_scope(scope: &ProjectScope, chat_id: &str) -> Resul
         .ok_or_else(|| "Chat not found for this project.".to_string())
 }
 
+pub(crate) fn set_chat_model(
+    chat_id: &str,
+    model: &str,
+    reasoning_effort: &str,
+) -> Result<(), String> {
+    let conn = connection()?;
+    if get_chat(&conn, chat_id)?.is_none() {
+        return Err("Chat not found.".to_string());
+    }
+    let clean_model = settings::clean_model(model).unwrap_or_else(|| DEFAULT_MODEL.to_string());
+    let clean_effort = settings::clean_reasoning_effort(reasoning_effort);
+    let model_trace = model_trace_from_selection(&clean_model);
+    let now = now_ms();
+    conn.execute(
+        "UPDATE chats
+         SET model = ?2,
+             provider_id = ?3,
+             model_id = ?4,
+             model_variant = ?5,
+             model_ref_json = ?6,
+             reasoning_effort = ?7,
+             updated_at_ms = ?8
+         WHERE id = ?1",
+        params![
+            chat_id,
+            clean_model,
+            model_trace.as_ref().map(|trace| trace.provider_id.as_str()),
+            model_trace.as_ref().map(|trace| trace.model_id.as_str()),
+            model_trace
+                .as_ref()
+                .and_then(|trace| trace.model_variant.as_deref()),
+            model_trace
+                .as_ref()
+                .map(|trace| trace.model_ref_json.as_str()),
+            clean_effort,
+            now
+        ],
+    )
+    .map_err(to_store_error)?;
+    Ok(())
+}
+
 pub(crate) fn insert_user_message(
     chat_id: &str,
     content: &str,
@@ -277,12 +335,110 @@ pub(crate) fn insert_assistant_placeholder(chat_id: &str) -> Result<StoredMessag
     insert_message(chat_id, "assistant", "in_progress", "", None, None, None)
 }
 
+pub(crate) fn start_generation(
+    chat_id: &str,
+    assistant_message_id: &str,
+    model: &str,
+    reasoning_effort: &str,
+) -> Result<StartedGeneration, String> {
+    let conn = connection()?;
+    if get_message(&conn, assistant_message_id)?.is_none() {
+        return Err("Assistant message not found.".to_string());
+    }
+    let now = now_ms();
+    let generation_id = new_id("gen");
+    let model_trace = model_trace_from_selection(model);
+    conn.execute(
+        "INSERT INTO chat_generations
+         (id, chat_id, assistant_message_id, provider_id, model_id, model_variant,
+          model_ref_json, reasoning_effort, status, started_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'running', ?9)",
+        params![
+            generation_id,
+            chat_id,
+            assistant_message_id,
+            model_trace.as_ref().map(|trace| trace.provider_id.as_str()),
+            model_trace.as_ref().map(|trace| trace.model_id.as_str()),
+            model_trace
+                .as_ref()
+                .and_then(|trace| trace.model_variant.as_deref()),
+            model_trace
+                .as_ref()
+                .map(|trace| trace.model_ref_json.as_str()),
+            reasoning_effort,
+            now
+        ],
+    )
+    .map_err(to_store_error)?;
+    set_message_generation_trace(
+        &conn,
+        assistant_message_id,
+        Some(&generation_id),
+        model_trace.as_ref(),
+    )?;
+    Ok(StartedGeneration { id: generation_id })
+}
+
+pub(crate) fn finish_generation(
+    generation_id: &str,
+    status: &str,
+    error: Option<&Value>,
+) -> Result<(), String> {
+    let conn = connection()?;
+    let now = now_ms();
+    let error_json = error
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| error.to_string())?;
+    conn.execute(
+        "UPDATE chat_generations
+         SET status = ?2,
+             error_json = ?3,
+             finished_at_ms = ?4
+         WHERE id = ?1",
+        params![generation_id, status, error_json, now],
+    )
+    .map_err(to_store_error)?;
+    Ok(())
+}
+
+fn set_message_generation_trace(
+    conn: &Connection,
+    message_id: &str,
+    generation_id: Option<&str>,
+    model_trace: Option<&ModelTrace>,
+) -> Result<(), String> {
+    let now = now_ms();
+    conn.execute(
+        "UPDATE chat_messages
+         SET generation_id = COALESCE(?2, generation_id),
+             provider_id = COALESCE(?3, provider_id),
+             model_id = COALESCE(?4, model_id),
+             model_variant = COALESCE(?5, model_variant),
+             model_ref_json = COALESCE(?6, model_ref_json),
+             updated_at_ms = ?7
+         WHERE id = ?1",
+        params![
+            message_id,
+            generation_id,
+            model_trace.map(|trace| trace.provider_id.as_str()),
+            model_trace.map(|trace| trace.model_id.as_str()),
+            model_trace.and_then(|trace| trace.model_variant.as_deref()),
+            model_trace.map(|trace| trace.model_ref_json.as_str()),
+            now
+        ],
+    )
+    .map_err(to_store_error)?;
+    Ok(())
+}
+
 pub(crate) fn finish_assistant_message(
     message_id: &str,
     content: &str,
     reasoning_content: Option<&str>,
     usage: Option<&Value>,
     fallback_model: &str,
+    generation_id: Option<&str>,
 ) -> Result<StoredMessage, String> {
     let conn = connection()?;
     let now = now_ms();
@@ -291,6 +447,7 @@ pub(crate) fn finish_assistant_message(
         .transpose()
         .map_err(|error| error.to_string())?;
     let cost = usage.and_then(usage_cost);
+    let model_trace = model_trace_from_selection(fallback_model);
     conn.execute(
         "UPDATE chat_messages
          SET status = 'done',
@@ -298,7 +455,12 @@ pub(crate) fn finish_assistant_message(
              reasoning_content = ?3,
              usage_json = ?4,
              cost = ?5,
-             updated_at_ms = ?6
+             generation_id = COALESCE(?6, generation_id),
+             provider_id = COALESCE(?7, provider_id),
+             model_id = COALESCE(?8, model_id),
+             model_variant = COALESCE(?9, model_variant),
+             model_ref_json = COALESCE(?10, model_ref_json),
+             updated_at_ms = ?11
          WHERE id = ?1",
         params![
             message_id,
@@ -306,6 +468,15 @@ pub(crate) fn finish_assistant_message(
             reasoning_content,
             usage_json,
             cost,
+            generation_id,
+            model_trace.as_ref().map(|trace| trace.provider_id.as_str()),
+            model_trace.as_ref().map(|trace| trace.model_id.as_str()),
+            model_trace
+                .as_ref()
+                .and_then(|trace| trace.model_variant.as_deref()),
+            model_trace
+                .as_ref()
+                .map(|trace| trace.model_ref_json.as_str()),
             now
         ],
     )
@@ -320,6 +491,8 @@ pub(crate) fn finish_assistant_message(
             fallback_model,
             "chat",
             usage,
+            generation_id,
+            model_trace.as_ref(),
         )?;
     }
     refresh_chat_rollups(&conn, &message.chat_id)?;
@@ -431,6 +604,7 @@ pub(crate) fn insert_tool_message(
 pub(crate) fn upsert_tool_call(
     chat_id: &str,
     assistant_message_id: &str,
+    generation_id: Option<&str>,
     tool_call_id: &str,
     tool_name: &str,
     arguments: &Value,
@@ -441,14 +615,24 @@ pub(crate) fn upsert_tool_call(
     let args_json = serde_json::to_string(arguments).map_err(|error| error.to_string())?;
     conn.execute(
         "INSERT INTO chat_tool_calls
-         (id, chat_id, assistant_message_id, tool_name, arguments_json, status, created_at_ms, updated_at_ms)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+         (id, chat_id, assistant_message_id, generation_id, tool_name, arguments_json, status, created_at_ms, updated_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
          ON CONFLICT(id) DO UPDATE SET
+           generation_id = COALESCE(excluded.generation_id, chat_tool_calls.generation_id),
            tool_name = excluded.tool_name,
            arguments_json = excluded.arguments_json,
            status = excluded.status,
            updated_at_ms = excluded.updated_at_ms",
-        params![tool_call_id, chat_id, assistant_message_id, tool_name, args_json, status, now],
+        params![
+            tool_call_id,
+            chat_id,
+            assistant_message_id,
+            generation_id,
+            tool_name,
+            args_json,
+            status,
+            now
+        ],
     )
     .map_err(to_store_error)?;
     Ok(())
@@ -520,7 +704,6 @@ pub(crate) fn replay_messages(chat_id: &str) -> Result<Vec<Value>, String> {
         .query(params![chat_id, REPLAY_MESSAGE_LIMIT])
         .map_err(to_store_error)?;
     let mut messages = Vec::new();
-    let mut replay_image_bytes = 0usize;
 
     while let Some(row) = rows.next().map_err(to_store_error)? {
         let role: String = row.get(0).map_err(to_store_error)?;
@@ -529,10 +712,9 @@ pub(crate) fn replay_messages(chat_id: &str) -> Result<Vec<Value>, String> {
         let tool_name: Option<String> = row.get(3).map_err(to_store_error)?;
         let tool_calls_json: Option<String> = row.get(4).map_err(to_store_error)?;
         let metadata_json: Option<String> = row.get(5).map_err(to_store_error)?;
-        let replay_images =
-            replay_images_from_metadata(metadata_json.as_deref(), &mut replay_image_bytes);
-        let message_content = if role == "user" && !replay_images.is_empty() {
-            images::user_content_value(&content, &replay_images)
+        let image_placeholders = image_placeholders_from_metadata(metadata_json.as_deref());
+        let message_content = if role == "user" && !image_placeholders.is_empty() {
+            images::user_content_with_image_placeholders(&content, &image_placeholders)
         } else {
             json!(content)
         };
@@ -555,10 +737,7 @@ pub(crate) fn replay_messages(chat_id: &str) -> Result<Vec<Value>, String> {
     Ok(messages)
 }
 
-fn replay_images_from_metadata(
-    metadata_json: Option<&str>,
-    replay_image_bytes: &mut usize,
-) -> Vec<ChatImage> {
+fn image_placeholders_from_metadata(metadata_json: Option<&str>) -> Vec<ImagePlaceholder> {
     let Some(metadata_json) = metadata_json else {
         return Vec::new();
     };
@@ -568,20 +747,34 @@ fn replay_images_from_metadata(
     let Some(images) = metadata.get("images") else {
         return Vec::new();
     };
-    let Ok(images) = serde_json::from_value::<Vec<ChatImage>>(images.clone()) else {
-        return Vec::new();
-    };
+    images
+        .as_array()
+        .map(|images| {
+            images
+                .iter()
+                .filter_map(image_placeholder_from_value)
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
-    let mut selected = Vec::new();
-    for image in images {
-        let next_total = replay_image_bytes.saturating_add(image.size_bytes);
-        if next_total > MAX_TOTAL_IMAGE_BYTES {
-            break;
-        }
-        *replay_image_bytes = next_total;
-        selected.push(image);
-    }
-    selected
+fn image_placeholder_from_value(value: &Value) -> Option<ImagePlaceholder> {
+    let object = value.as_object()?;
+    let mime_type = object
+        .get("mime_type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("image")
+        .to_string();
+    let name = object
+        .get("name")
+        .or_else(|| object.get("description"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(120).collect::<String>());
+    Some(ImagePlaceholder { mime_type, name })
 }
 
 pub(crate) fn set_active_chat_id(scope: &ProjectScope, chat_id: &str) -> Result<(), String> {
@@ -821,17 +1014,28 @@ fn record_usage_log(
     fallback_model: &str,
     agent_type: &str,
     usage: &Value,
+    generation_id: Option<&str>,
+    model_trace: Option<&ModelTrace>,
 ) -> Result<(), String> {
     let now = now_ms();
     let model = usage_string(usage, "model").unwrap_or_else(|| fallback_model.to_string());
+    let usage_generation = usage_string(usage, "generation_id");
+    let usage_generation_id = generation_id.or(usage_generation.as_deref());
     conn.execute(
         "INSERT INTO chat_usage_logs
-         (id, chat_id, assistant_message_id, model, agent_type, prompt_tokens,
+         (id, chat_id, assistant_message_id, generation_id, model,
+          provider_id, model_id, model_variant, model_ref_json,
+          agent_type, prompt_tokens,
           completion_tokens, total_tokens, reasoning_tokens, cached_tokens,
-          cache_write_tokens, cost, upstream_cost, generation_id, provider_name, created_at_ms)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+          cache_write_tokens, cost, upstream_cost, provider_name, created_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
          ON CONFLICT(assistant_message_id) WHERE assistant_message_id IS NOT NULL DO UPDATE SET
+           generation_id = COALESCE(excluded.generation_id, chat_usage_logs.generation_id),
            model = excluded.model,
+           provider_id = COALESCE(excluded.provider_id, chat_usage_logs.provider_id),
+           model_id = COALESCE(excluded.model_id, chat_usage_logs.model_id),
+           model_variant = COALESCE(excluded.model_variant, chat_usage_logs.model_variant),
+           model_ref_json = COALESCE(excluded.model_ref_json, chat_usage_logs.model_ref_json),
            agent_type = excluded.agent_type,
            prompt_tokens = excluded.prompt_tokens,
            completion_tokens = excluded.completion_tokens,
@@ -841,23 +1045,39 @@ fn record_usage_log(
            cache_write_tokens = excluded.cache_write_tokens,
            cost = excluded.cost,
            upstream_cost = excluded.upstream_cost,
-           generation_id = excluded.generation_id,
            provider_name = excluded.provider_name",
         params![
             new_id("usage"),
             chat_id,
             assistant_message_id,
+            usage_generation_id,
             model,
+            model_trace.map(|trace| trace.provider_id.as_str()),
+            model_trace.map(|trace| trace.model_id.as_str()),
+            model_trace.and_then(|trace| trace.model_variant.as_deref()),
+            model_trace.map(|trace| trace.model_ref_json.as_str()),
             agent_type,
-            usage_i64(usage, "prompt_tokens", "promptTokens"),
-            usage_i64(usage, "completion_tokens", "completionTokens"),
-            usage_i64(usage, "total_tokens", "totalTokens"),
-            usage_i64(usage, "reasoning_tokens", "reasoningTokens"),
-            usage_i64(usage, "cached_tokens", "cachedTokens"),
-            usage_i64(usage, "cache_write_tokens", "cacheWriteTokens"),
+            usage_i64_any(usage, &["prompt_tokens", "promptTokens", "input_tokens", "inputTokens"]),
+            usage_i64_any(usage, &["completion_tokens", "completionTokens", "output_tokens", "outputTokens"]),
+            usage_i64_any(usage, &["total_tokens", "totalTokens"]),
+            usage_i64_any(usage, &["reasoning_tokens", "reasoningTokens"]),
+            usage_i64_any(usage, &[
+                "cached_tokens",
+                "cachedTokens",
+                "cache_read_tokens",
+                "cacheReadTokens",
+                "cache_read_input_tokens",
+                "cacheReadInputTokens",
+                "cachedInputTokens"
+            ]),
+            usage_i64_any(usage, &[
+                "cache_write_tokens",
+                "cacheWriteTokens",
+                "cache_creation_input_tokens",
+                "cacheWriteInputTokens"
+            ]),
             usage_cost(usage).unwrap_or(0.0),
             usage_f64(usage, "upstream_cost", "upstreamCost"),
-            usage_string(usage, "generation_id"),
             usage_string(usage, "provider_name"),
             now
         ],
@@ -955,11 +1175,9 @@ fn usage_prompt_tokens(usage: &Value) -> Option<i64> {
         })
 }
 
-fn usage_i64(usage: &Value, snake_key: &str, camel_key: &str) -> i64 {
-    usage
-        .get(snake_key)
-        .or_else(|| usage.get(camel_key))
-        .and_then(Value::as_i64)
+fn usage_i64_any(usage: &Value, keys: &[&str]) -> i64 {
+    keys.iter()
+        .find_map(|key| usage.get(*key).and_then(Value::as_i64))
         .unwrap_or(0)
 }
 
@@ -1000,4 +1218,41 @@ fn active_chat_key(scope: &ProjectScope) -> String {
 
 fn normalize_project_path(path: &str) -> String {
     path.trim().replace('\\', "/").to_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_image_metadata_replays_as_placeholders() {
+        let metadata = json!({
+            "images": [
+                {
+                    "base64": "a".repeat(320_000),
+                    "mime_type": "image/png",
+                    "name": "old.png",
+                    "size_bytes": 240000
+                }
+            ]
+        })
+        .to_string();
+
+        let placeholders = image_placeholders_from_metadata(Some(&metadata));
+
+        assert_eq!(
+            placeholders,
+            vec![ImagePlaceholder {
+                mime_type: "image/png".to_string(),
+                name: Some("old.png".to_string())
+            }]
+        );
+        let content = images::user_content_with_image_placeholders("see attached", &placeholders);
+        assert!(
+            content
+                .to_string()
+                .contains("[Attached image/png: old.png]")
+        );
+        assert!(!content.to_string().contains(&"a".repeat(256)));
+    }
 }

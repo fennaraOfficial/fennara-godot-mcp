@@ -2,6 +2,7 @@ use crate::app_layout::display_path;
 use crate::csharp_support;
 use crate::project_guidance;
 use crate::release_package;
+use crate::webview_prereq;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,6 +39,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     if options.csharp {
         println!("csharp: installed");
     }
+    webview_prereq::warn_for_current_platform()?;
     println!("next: run `fennara update` inside this project when a new release is available");
     Ok(())
 }

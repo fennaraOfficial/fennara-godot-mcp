@@ -9,18 +9,41 @@
   const MAX_SEND_IMAGE_BYTES = 3 * 1024 * 1024;
   const MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
   const SHOW_RELOAD_BUTTON = true;
+  const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+  const DEFAULT_LOCAL_BASE_URLS = {
+    ollama: DEFAULT_OLLAMA_BASE_URL,
+    lmstudio: "http://127.0.0.1:1234/v1",
+  };
+  const CHAT_SURFACE_EMBEDDED = "embedded";
+  const CHAT_SURFACE_BROWSER = "browser";
+  const RUNTIME_CHAT_SURFACE = /^https?:$/.test(window.location.protocol)
+    ? CHAT_SURFACE_BROWSER
+    : CHAT_SURFACE_EMBEDDED;
   const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
   const COPY_ICON = '<svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11c0-2.83 0-4.24.88-5.12C7.76 5 9.17 5 12 5h3c2.83 0 4.24 0 5.12.88C21 6.76 21 8.17 21 11v5c0 2.83 0 4.24-.88 5.12C19.24 22 17.83 22 15 22h-3c-2.83 0-4.24 0-5.12-.88C6 20.24 6 18.83 6 16v-5Z"></path><path d="M6 19a3 3 0 0 1-3-3v-6c0-3.77 0-5.66 1.17-6.83C5.34 2 7.23 2 11 2h4a3 3 0 0 1 3 3"></path></svg>';
   const CHECK_ICON = '<svg class="svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m20 6-11 11-5-5"></path></svg>';
-
   const settingsDialog = document.querySelector("[data-settings]");
+  const commandPopover = document.querySelector("[data-command-popover]");
+  const commandOptionButtons = Array.from(document.querySelectorAll("[data-command-option]"));
   const modelPopover = document.querySelector("[data-model-popover]");
+  const providerPopover = document.querySelector("[data-provider-popover]");
+  const providerKeyPopover = document.querySelector("[data-provider-key-popover]");
+  const ollamaSetupPopover = document.querySelector("[data-ollama-setup-popover]");
   const modelTrigger = document.querySelector("[data-open-model-picker]");
   const modelSearch = document.querySelector("[data-model-search]");
   const modelList = document.querySelector("[data-model-list]");
   const modelDetail = document.querySelector("[data-model-detail]");
-  const customModelInput = document.querySelector("[data-custom-model]");
-  const addCustomModelButton = document.querySelector("[data-add-custom-model]");
+  const providerStatuses = document.querySelectorAll("[data-provider-status]");
+  const providerDot = document.querySelector(".composer-model-dot");
+  const providerOptionsList = document.querySelector("[data-provider-options]");
+  const providerSearch = document.querySelector("[data-provider-search]");
+  const ollamaForm = document.querySelector("[data-ollama-form]");
+  const ollamaBaseUrlInput = document.querySelector("[data-ollama-base-url]");
+  const localSetupTitle = document.querySelector("[data-local-setup-title]");
+  const localSetupHelp = document.querySelector("[data-local-setup-help]");
+  const providerKeyForm = document.querySelector("[data-provider-key-form]");
+  const providerKeyTitle = document.querySelector("[data-provider-key-title]");
+  const providerKeyInlineInput = document.querySelector("[data-provider-key-inline]");
   const transcript = document.querySelector("[data-transcript]");
   const chatList = document.querySelector("[data-chat-list]");
   const chatTitle = document.querySelector("[data-chat-title]");
@@ -29,7 +52,8 @@
   const attachImageButton = document.querySelector("[data-attach-image]");
   const imageInput = document.querySelector("[data-image-input]");
   const attachmentPreview = document.querySelector("[data-attachment-preview]");
-  const apiKeyInput = document.querySelector("[data-api-key]");
+  const chatSurfaceBrowserInput = document.querySelector("[data-chat-surface-browser]");
+  const chatSurfaceRestartStatus = document.querySelector("[data-chat-surface-restart]");
   const modelInput = document.querySelector("[data-model]");
   const modelStatuses = document.querySelectorAll("[data-model-status]");
   const chatSizeStatus = document.querySelector("[data-chat-size]");
@@ -53,7 +77,6 @@
   const effortToggle = document.querySelector("[data-effort-toggle]");
   const effortOptions = document.querySelector("[data-effort-options]");
   const effortOptionButtons = document.querySelectorAll("[data-effort-option]");
-  const keyStatus = document.querySelector("[data-key-status]");
   const sendButton = document.querySelector("[data-send-button]");
   const revertButton = document.querySelector("[data-revert-button]");
   const saveSettingsButton = document.querySelector("[data-save-settings]");
@@ -90,15 +113,31 @@
   };
 
   let socket = null;
+  let daemonConnected = false;
   let reconnectTimer = 0;
   let requestCounter = 0;
   let activeChatId = null;
-  let currentModel = "openrouter/auto";
+  let currentModel = "";
+  let currentProvider = "";
   let currentReasoningEffort = "medium";
+  let currentChatSurface = CHAT_SURFACE_EMBEDDED;
   let hasOpenRouterKey = false;
+  let hasOllamaCloudKey = false;
+  let providerRegistry = [];
+  let providerMetadata = new Map();
+  let keyPromptProvider = "";
+  let ollamaBaseUrl = DEFAULT_OLLAMA_BASE_URL;
+  let providerBaseUrls = new Map(Object.entries(DEFAULT_LOCAL_BASE_URLS));
+  let ollamaModels = [];
+  let ollamaStatus = "unknown";
+  let localProviderStatuses = new Map();
+  let lastModelCatalog = null;
+  let openrouterCatalogStatus = null;
+  let catalogRefreshInFlight = false;
   let chatStreaming = false;
   let sessionCost = 0;
   let activeTurnCost = 0;
+  const optimisticUserMessageRequests = new Map();
   let latestPromptTokens = 0;
   let projectStatusTimer = 0;
   let usageCloseTimer = 0;
@@ -106,6 +145,10 @@
   let modelPicker = null;
   let pendingSettingsPayload = null;
   let attachedImages = [];
+  let activeCommandIndex = 0;
+  let activeCommandRange = null;
+  let lastCommandQuery = "";
+  let visibleCommandList = [];
   const transcriptRenderer = window.FennaraTranscriptRenderer.createTranscriptRenderer({
     transcript,
     markdown,
@@ -121,16 +164,36 @@
     search: modelSearch,
     list: modelList,
     detail: modelDetail,
-    customInput: customModelInput,
-    addCustomButton: addCustomModelButton,
     getCurrentModel: () => currentModel,
+    getCurrentProvider: () => currentProvider,
+    getProviders: () => providerRegistry,
+    isProviderConnected: providerConnected,
+    providerFromModel,
+    hasOpenRouterKey: () => hasOpenRouterKey,
+    hasOllamaCloudKey: () => hasOllamaCloudKey,
+    getOllamaModels: () => ollamaModels,
+    openProviderPicker,
+    openOpenRouterKeyPrompt,
+    openProviderKeyPrompt,
     onSelect: selectModel,
-    onRequestModels: () => send({ type: "list_models", request_id: nextRequestId("list-models") }),
+    onEscapeClose: focusComposer,
+    onRequestModels: () => requestModelList({ refreshOllama: true }),
+    onRefreshCatalog: () => refreshModelCatalog(true),
   });
 
+  function daemonWsUrl() {
+    if (/^https?:$/.test(window.location.protocol) && /^(127\.0\.0\.1|localhost)$/.test(window.location.hostname)) {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      return `${protocol}//${window.location.host}/chat/ws`;
+    }
+    return DAEMON_WS_URL;
+  }
+
   function chatWsUrl() {
-    const token = new URLSearchParams(window.location.search).get("chat_token") || "";
-    return token ? DAEMON_WS_URL + "?chat_token=" + encodeURIComponent(token) : DAEMON_WS_URL;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("chat_token") || params.get("session") || "";
+    const baseUrl = daemonWsUrl();
+    return token ? baseUrl + "?chat_token=" + encodeURIComponent(token) : baseUrl;
   }
 
   function nextRequestId(prefix) {
@@ -143,11 +206,12 @@
     socket = new WebSocket(chatWsUrl());
 
     socket.addEventListener("open", () => {
+      daemonConnected = true;
       appShell?.setAttribute("data-connection", "online");
       send({ type: "get_settings", request_id: nextRequestId("settings") });
       requestProjectStatus();
       startProjectStatusPolling();
-      modelPicker?.requestModels();
+      requestModelList();
       flushPendingSettings();
     });
 
@@ -162,6 +226,7 @@
     });
 
     socket.addEventListener("close", () => {
+      daemonConnected = false;
       appShell?.setAttribute("data-connection", "offline");
       stopProjectStatusPolling();
       reconnectTimer = window.setTimeout(connect, DAEMON_RECONNECT_DELAY_MS);
@@ -175,6 +240,52 @@
     }
     socket.send(JSON.stringify(payload));
     return true;
+  }
+
+  function ensureDaemonConnected() {
+    if (daemonConnected && socket?.readyState === WebSocket.OPEN) {
+      return true;
+    }
+    appendSystem("Connecting to local daemon...");
+    if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+      connect();
+    }
+    return false;
+  }
+
+  function requestModelList(options = {}) {
+    if (options.refreshOllama) {
+      ollamaStatus = "checking";
+      ollamaModels = [];
+      providerRegistry
+        .filter((provider) => provider.kind === "local")
+        .forEach((provider) => {
+          const existing = localProviderStatuses.get(provider.id) || {};
+          localProviderStatuses.set(provider.id, { ...existing, state: "checking" });
+        });
+      updateProviderUi();
+      updateModelUi();
+    }
+    return send({ type: "list_models", request_id: nextRequestId("list-models") });
+  }
+
+  function refreshModelCatalog(force = true) {
+    catalogRefreshInFlight = true;
+    modelPicker?.applyCatalog({
+      ...(lastModelCatalog || {}),
+      catalog_status: openrouterCatalogStatus,
+      refreshing: true,
+      providers: providerRegistry,
+    });
+    const sent = send({
+      type: "refresh_model_catalog",
+      request_id: nextRequestId("refresh-model-catalog"),
+      force,
+    });
+    if (!sent) {
+      catalogRefreshInFlight = false;
+    }
+    return sent;
   }
 
   function requestProjectStatus() {
@@ -202,16 +313,438 @@
   }
 
   function openSettings() {
+    if (!ensureDaemonConnected()) {
+      return;
+    }
     setUsagePopoverOpen(false);
+    closeProviderPicker();
+    closeOpenRouterKeyPrompt();
+    closeOllamaSetupPrompt();
+    closeCommandPalette();
+    if (chatSurfaceBrowserInput) {
+      chatSurfaceBrowserInput.checked = currentChatSurface === CHAT_SURFACE_BROWSER;
+    }
+    updateChatSurfaceRestartNotice(currentChatSurface);
     if (settingsDialog && typeof settingsDialog.showModal === "function") {
       settingsDialog.showModal();
     }
   }
 
-  function openModelPicker() {
+  function openModelPicker(forceOpen = false) {
+    if (!ensureDaemonConnected()) {
+      return;
+    }
     setUsagePopoverOpen(false);
+    closeProviderPicker();
+    closeOpenRouterKeyPrompt();
+    closeOllamaSetupPrompt();
+    closeCommandPalette();
+    if (forceOpen && modelPicker?.open()) {
+      return;
+    }
     if (!modelPicker?.toggle()) {
-      openSettings();
+      openProviderPicker();
+    }
+  }
+
+  function openProviderPicker() {
+    if (!ensureDaemonConnected()) {
+      return false;
+    }
+    setUsagePopoverOpen(false);
+    modelPicker?.close();
+    closeOpenRouterKeyPrompt();
+    closeOllamaSetupPrompt();
+    closeCommandPalette();
+    if (!providerPopover) {
+      return false;
+    }
+    providerPopover.setAttribute("tabindex", "-1");
+    providerPopover.hidden = false;
+    providerPopover.focus({ preventScroll: true });
+    requestModelList({ refreshOllama: true });
+    renderProviderOptions();
+    positionProviderPopover();
+    window.setTimeout(() => providerSearch?.focus({ preventScroll: true }), 0);
+    return true;
+  }
+
+  function closeProviderPicker() {
+    if (!providerPopover || providerPopover.hidden) {
+      return;
+    }
+    providerPopover.hidden = true;
+  }
+
+  function centerPopover(popover, width = 560) {
+    if (!popover) {
+      return;
+    }
+    const viewportPad = 10;
+    const nextWidth = Math.min(width, Math.max(300, window.innerWidth - viewportPad * 2));
+    const height = popover.offsetHeight || 180;
+    popover.style.width = nextWidth + "px";
+    popover.style.left = Math.max(viewportPad, (window.innerWidth - nextWidth) / 2) + "px";
+    popover.style.top = Math.max(viewportPad, (window.innerHeight - height) / 2) + "px";
+    popover.dataset.side = "center";
+  }
+
+  function positionProviderPopover() {
+    centerPopover(providerPopover, 560);
+  }
+
+  function openOpenRouterKeyPrompt() {
+    return openProviderKeyPrompt("openrouter");
+  }
+
+  function openProviderKeyPrompt(providerId) {
+    if (!ensureDaemonConnected()) {
+      return false;
+    }
+    const provider = providerMetadata.get(providerId) || providerMetadata.get("openrouter");
+    setUsagePopoverOpen(false);
+    modelPicker?.close();
+    closeProviderPicker();
+    closeOllamaSetupPrompt();
+    closeCommandPalette();
+    if (!providerKeyPopover || !provider) {
+      return false;
+    }
+    keyPromptProvider = provider.id;
+    if (providerKeyTitle) {
+      providerKeyTitle.textContent = `${provider.name} API key`;
+    }
+    if (providerKeyInlineInput) {
+      providerKeyInlineInput.value = "";
+      providerKeyInlineInput.placeholder = provider.auth?.env || "API key";
+    }
+    providerKeyPopover.setAttribute("tabindex", "-1");
+    providerKeyPopover.hidden = false;
+    providerKeyPopover.focus({ preventScroll: true });
+    positionProviderKeyPrompt();
+    window.setTimeout(() => providerKeyInlineInput?.focus(), 0);
+    return true;
+  }
+
+  function closeOpenRouterKeyPrompt() {
+    if (!providerKeyPopover || providerKeyPopover.hidden) {
+      return;
+    }
+    providerKeyPopover.hidden = true;
+  }
+
+  function openOllamaSetupPrompt() {
+    if (!ensureDaemonConnected()) {
+      return false;
+    }
+    setUsagePopoverOpen(false);
+    modelPicker?.close();
+    closeProviderPicker();
+    closeOpenRouterKeyPrompt();
+    closeCommandPalette();
+    if (!ollamaSetupPopover) {
+      return false;
+    }
+    syncOllamaSetupFields();
+    ollamaSetupPopover.setAttribute("tabindex", "-1");
+    ollamaSetupPopover.hidden = false;
+    ollamaSetupPopover.focus({ preventScroll: true });
+    positionOllamaSetupPrompt();
+    window.setTimeout(() => ollamaBaseUrlInput?.focus({ preventScroll: true }), 0);
+    return true;
+  }
+
+  function closeOllamaSetupPrompt() {
+    if (!ollamaSetupPopover || ollamaSetupPopover.hidden) {
+      return;
+    }
+    ollamaSetupPopover.hidden = true;
+  }
+
+  function focusComposer() {
+    if (!prompt || chatStreaming) {
+      return;
+    }
+    const restore = () => {
+      prompt.focus({ preventScroll: true });
+      const end = prompt.value.length;
+      prompt.setSelectionRange?.(end, end);
+    };
+    window.setTimeout(restore, 0);
+    window.requestAnimationFrame?.(() => window.setTimeout(restore, 0));
+  }
+
+  function positionProviderKeyPrompt() {
+    centerPopover(providerKeyPopover, 420);
+  }
+
+  function positionOllamaSetupPrompt() {
+    centerPopover(ollamaSetupPopover, 420);
+  }
+
+  function renderProviderOptions() {
+    const query = String(providerSearch?.value || "").trim().toLowerCase();
+    if (!providerOptionsList) {
+      return;
+    }
+    const ranked = providerRegistry
+      .map((provider, index) => ({
+        provider,
+        index,
+        label: `${provider.name} ${provider.id}`.toLowerCase(),
+      }))
+      .map((item) => ({ ...item, score: providerScore(item.label, query) }))
+      .filter((item) => item.score < 99)
+      .sort((a, b) => a.score - b.score || a.index - b.index);
+    providerOptionsList.replaceChildren();
+    ranked.forEach(({ provider }) => {
+      providerOptionsList.append(renderProviderRow(provider));
+    });
+    if (!ranked.length) {
+      const empty = document.createElement("div");
+      empty.className = "model-empty";
+      const text = document.createElement("p");
+      text.textContent = "No matching providers.";
+      empty.append(text);
+      providerOptionsList.append(empty);
+    }
+    positionProviderPopover();
+  }
+
+  function renderProviderRow(provider) {
+    const row = document.createElement("button");
+    row.className = "provider-row";
+    row.type = "button";
+    row.dataset.providerOption = provider.id;
+    row.innerHTML = [
+      "<span>",
+      `<strong>${escapeHtml(provider.name)}</strong>`,
+      "</span>",
+      `<b>${escapeHtml(providerStatusLabel(provider))}</b>`,
+    ].join("");
+    row.addEventListener("click", (event) => {
+      event.stopPropagation();
+      chooseProvider(provider.id);
+    });
+    return row;
+  }
+
+  function syncOllamaSetupFields() {
+    const provider = providerMetadata.get(currentProvider) || providerMetadata.get("ollama");
+    const defaultBaseUrl = provider?.setup?.default_base_url || DEFAULT_LOCAL_BASE_URLS[provider?.id] || DEFAULT_OLLAMA_BASE_URL;
+    const baseUrl = providerBaseUrl(provider?.id || "ollama");
+    if (localSetupTitle) {
+      localSetupTitle.textContent = provider?.name || "Local provider";
+    }
+    if (localSetupHelp) {
+      localSetupHelp.textContent = `${provider?.name || "This provider"} uses ${defaultBaseUrl} by default. Override it only if your local server uses another URL. Models are listed automatically from the local server.`;
+    }
+    if (ollamaBaseUrlInput) {
+      ollamaBaseUrlInput.placeholder = defaultBaseUrl;
+      ollamaBaseUrlInput.value = baseUrl === defaultBaseUrl ? "" : baseUrl;
+    }
+  }
+
+  function providerScore(label, query) {
+    if (!query) {
+      return 0;
+    }
+    if (label === query) {
+      return 0;
+    }
+    if (label.startsWith(query)) {
+      return 1;
+    }
+    if (label.split(/[\\s()_-]+/).some((part) => part.startsWith(query))) {
+      return 2;
+    }
+    if (label.includes(query)) {
+      return 3;
+    }
+    return 99;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function commandMatch() {
+    const value = prompt?.value || "";
+    const cursor = prompt?.selectionStart ?? value.length;
+    const beforeCursor = value.slice(0, cursor);
+    const match = beforeCursor.match(/(^|\s)(\/[^\s]*)$/);
+    if (!match) {
+      return null;
+    }
+    const token = match[2] || "";
+    return {
+      query: token.toLowerCase(),
+      start: cursor - token.length,
+      end: cursor,
+    };
+  }
+
+  function commandQuery() {
+    const match = commandMatch();
+    activeCommandRange = match ? { start: match.start, end: match.end } : null;
+    return match?.query || "";
+  }
+
+  function openCommandPalette() {
+    if (!commandPopover || !prompt) {
+      return false;
+    }
+    commandPopover.hidden = false;
+    renderCommandPalette();
+    positionCommandPalette();
+    return true;
+  }
+
+  function closeCommandPalette() {
+    if (!commandPopover || commandPopover.hidden) {
+      return;
+    }
+    commandPopover.hidden = true;
+    activeCommandIndex = 0;
+    visibleCommandList = [];
+    lastCommandQuery = "";
+  }
+
+  function updateCommandPalette() {
+    if (!prompt || !commandPopover) {
+      return;
+    }
+    if (commandQuery()) {
+      openCommandPalette();
+    } else {
+      closeCommandPalette();
+    }
+  }
+
+  function renderCommandPalette() {
+    const query = commandQuery();
+    if (query !== lastCommandQuery) {
+      activeCommandIndex = 0;
+      lastCommandQuery = query;
+    }
+    const ranked = commandOptionButtons
+      .map((button, index) => ({
+        button,
+        index,
+        command: String(button.dataset.commandOption || "").toLowerCase(),
+        title: String(button.querySelector("span")?.textContent || "").toLowerCase(),
+      }))
+      .map((item) => ({
+        ...item,
+        score: commandScore(item.command, item.title, query),
+      }))
+      .filter((item) => item.score < 99)
+      .sort((a, b) => a.score - b.score || a.index - b.index);
+    visibleCommandList = ranked.map((item) => item.button);
+    const palette = commandPopover?.querySelector(".command-palette");
+    visibleCommandList.forEach((button) => {
+      button.hidden = false;
+      palette?.appendChild(button);
+    });
+    commandOptionButtons.forEach((button) => {
+      if (!visibleCommandList.includes(button)) {
+        button.hidden = true;
+      }
+    });
+    if (activeCommandIndex >= visibleCommandList.length) {
+      activeCommandIndex = 0;
+    }
+    visibleCommandList.forEach((button, index) => {
+      button.setAttribute("aria-selected", String(index === activeCommandIndex));
+    });
+    commandPopover.hidden = visibleCommandList.length === 0;
+  }
+
+  function commandScore(command, title, query) {
+    if (!query) {
+      return 99;
+    }
+    const needle = query.replace(/^\//, "");
+    const trigger = command.replace(/^\//, "");
+    if (!needle) {
+      return 0;
+    }
+    if (trigger === needle) {
+      return 0;
+    }
+    if (trigger.startsWith(needle)) {
+      return 1;
+    }
+    if (title.startsWith(needle)) {
+      return 2;
+    }
+    if (trigger.includes(needle) || title.includes(needle)) {
+      return 3;
+    }
+    return 99;
+  }
+
+  function positionCommandPalette() {
+    if (!commandPopover) {
+      return;
+    }
+    const anchor = document.querySelector(".composer-card") || prompt;
+    if (!anchor) {
+      return;
+    }
+    const gap = 8;
+    const margin = 10;
+    const anchorRect = anchor.getBoundingClientRect();
+    const width = Math.min(360, Math.max(280, window.innerWidth - margin * 2));
+    const height = commandPopover.offsetHeight || 150;
+    const left = Math.min(
+      Math.max(margin, anchorRect.left),
+      window.innerWidth - width - margin,
+    );
+    const top = Math.max(margin, anchorRect.top - gap - height);
+    commandPopover.style.width = width + "px";
+    commandPopover.style.left = left + "px";
+    commandPopover.style.top = top + "px";
+  }
+
+  function visibleCommandButtons() {
+    return visibleCommandList.filter((button) => !button.hidden);
+  }
+
+  function moveCommandSelection(delta) {
+    const buttons = visibleCommandButtons();
+    if (!buttons.length) {
+      return;
+    }
+    activeCommandIndex = (activeCommandIndex + delta + buttons.length) % buttons.length;
+    renderCommandPalette();
+  }
+
+  function runCommand(command) {
+    const clean = String(command || "").trim().toLowerCase();
+    if (!clean) {
+      return;
+    }
+    if ((clean === "/provider" || clean === "/model") && !ensureDaemonConnected()) {
+      return;
+    }
+    if (prompt && activeCommandRange) {
+      const value = prompt.value || "";
+      prompt.value = value.slice(0, activeCommandRange.start) + value.slice(activeCommandRange.end);
+      prompt.selectionStart = activeCommandRange.start;
+      prompt.selectionEnd = activeCommandRange.start;
+      resizePrompt();
+    }
+    activeCommandRange = null;
+    closeCommandPalette();
+    if (clean === "/provider") {
+      openProviderPicker();
+    } else if (clean === "/model") {
+      openModelPicker(true);
     }
   }
 
@@ -234,6 +767,36 @@
 
   function appendMessage(role, text, attachments = []) {
     return transcriptRenderer.appendMessage(role, text, attachments);
+  }
+
+  function appendDaemonUserMessage(userMessage, requestId = "") {
+    const node = appendMessage(
+      "user",
+      userMessage.content || "",
+      imagesFromMetadata(userMessage.metadata_json),
+    );
+    const optimistic = optimisticUserMessageRequests.get(String(requestId || ""));
+    if (optimistic) {
+      optimistic.node = node;
+    }
+    return node;
+  }
+
+  function hasConnectedOptimisticUserMessage(requestId) {
+    const optimistic = optimisticUserMessageRequests.get(String(requestId || ""));
+    return Boolean(optimistic?.node?.isConnected);
+  }
+
+  function restorePendingOptimisticUserMessages(chatId) {
+    for (const optimistic of optimisticUserMessageRequests.values()) {
+      if (optimistic.node?.isConnected) {
+        continue;
+      }
+      if (optimistic.chatId && chatId && optimistic.chatId !== chatId) {
+        continue;
+      }
+      optimistic.node = appendMessage("user", optimistic.text || "", optimistic.images || []);
+    }
   }
 
   function renderStoredMessages(messages) {
@@ -350,6 +913,9 @@
   }
 
   function updateAssistantText(text) {
+    if (String(text || "").trim()) {
+      transcriptRenderer.finishActiveThinking();
+    }
     transcriptRenderer.updateAssistantText(text);
   }
 
@@ -401,10 +967,10 @@
     if (chatSizeStatus) {
       const usedText = formatTokenCount(latestPromptTokens);
       const availableText = hasAvailable ? formatTokenCount(availableTokens) : "?";
-      chatSizeStatus.textContent = `${usedText} / ${availableText} tokens`;
+      chatSizeStatus.textContent = `*${usedText} / ${availableText} tokens`;
     }
     if (usageContextStatus) {
-      usageContextStatus.textContent = hasAvailable ? `${formatTokenCount(availableTokens)} tokens` : "Unknown";
+      usageContextStatus.textContent = hasAvailable ? `*${formatTokenCount(availableTokens)} tokens` : "*Unknown";
     }
   }
 
@@ -413,10 +979,10 @@
       return;
     }
     sessionCostStatus.hidden = sessionCost <= 0;
-    sessionCostStatus.textContent = sessionCost > 0 ? formatCostValue(sessionCost) : "";
+    sessionCostStatus.textContent = sessionCost > 0 ? "*" + formatCostValue(sessionCost) : "";
     sessionCostStatus.title = "";
     if (usageTotalCost) {
-      usageTotalCost.textContent = sessionCost > 0 ? formatCostValue(sessionCost) : "$0.00";
+      usageTotalCost.textContent = sessionCost > 0 ? "*" + formatCostValue(sessionCost) : "*$0.00";
     }
     if (sessionCostStatus.hidden) {
       setUsagePopoverOpen(false);
@@ -608,29 +1174,36 @@
     if (!settings) {
       return;
     }
-    hasOpenRouterKey = Boolean(settings.has_openrouter_key);
-    currentModel = settings.model || settings.default_model || "openrouter/auto";
+    applyProviderBaseUrls(settings);
+    ollamaBaseUrl = providerBaseUrl("ollama");
+    applyProviderRegistry(settings);
+    hasOpenRouterKey = providerConnected("openrouter") || Boolean(settings.has_openrouter_key);
+    hasOllamaCloudKey = providerConnected("ollama-cloud") || Boolean(settings.has_ollama_cloud_key);
+    const savedModel = cleanUiModelId(settings.model || settings.default_model || "");
+    currentProvider = providerFromModel(savedModel) || currentProvider;
+    currentModel = savedModel || currentModel;
     currentReasoningEffort = cleanReasoningEffort(settings.reasoning_effort);
+    currentChatSurface = cleanChatSurface(settings.chat_surface);
+    if (!currentProvider && hasOpenRouterKey) {
+      currentProvider = "openrouter";
+    }
+    if (chatSurfaceBrowserInput) {
+      chatSurfaceBrowserInput.checked = currentChatSurface === CHAT_SURFACE_BROWSER;
+    }
+    updateChatSurfaceRestartNotice();
+    if (ollamaBaseUrlInput) {
+      syncOllamaSetupFields();
+    }
     if (modelInput) {
       modelInput.value = currentModel;
     }
-    modelStatuses.forEach((status) => {
-      status.textContent = currentModelLabel();
-      status.title = currentModel;
-    });
+    updateProviderUi();
+    updateModelUi();
     updateChatSize();
     reasoningEffortControls.forEach((control) => {
       control.value = currentReasoningEffort;
     });
     updateComposerEffort();
-    if (keyStatus) {
-      keyStatus.textContent = hasOpenRouterKey ? "OpenRouter key saved locally" : "OpenRouter key not set";
-    }
-    if (apiKeyInput && (!options.preserveTypedKey || !apiKeyInput.value.trim())) {
-      apiKeyInput.value = "";
-      apiKeyInput.placeholder = hasOpenRouterKey ? "Saved locally. Enter a new key to replace it." : "sk-or-...";
-    }
-
     const list = document.querySelector("#model-suggestions");
     if (list && Array.isArray(settings.text_model_suggestions)) {
       list.replaceChildren();
@@ -640,10 +1213,271 @@
         list.append(option);
       }
     }
+    requestModelList();
+  }
+
+  function applyProviderRegistry(settings) {
+    const providers = Array.isArray(settings.providers) && settings.providers.length
+      ? settings.providers
+      : fallbackProviderRegistry(settings);
+    providerRegistry = providers.map(normalizeProvider).filter((provider) => provider.id);
+    providerMetadata = new Map(providerRegistry.map((provider) => [provider.id, provider]));
+    renderProviderOptions();
+    modelPicker?.applyCatalog({
+      ...(lastModelCatalog || {}),
+      providers: providerRegistry,
+    });
+  }
+
+  function normalizeProvider(provider) {
+    const id = String(provider?.id || "").trim();
+    const setup = provider?.setup || null;
+    if (id && setup?.base_url) {
+      providerBaseUrls.set(id, String(setup.base_url));
+    }
+    return {
+      id,
+      name: String(provider?.name || id || "Provider"),
+      kind: String(provider?.kind || "cloud"),
+      auth: provider?.auth || { type: "none" },
+      connected: Boolean(provider?.connected),
+      model_prefix: String(provider?.model_prefix || (id ? `${id}/` : "")),
+      setup,
+    };
+  }
+
+  function fallbackProviderRegistry(settings) {
+    return [
+      {
+        id: "openrouter",
+        name: "OpenRouter",
+        kind: "cloud",
+        auth: { type: "api_key", env: "OPENROUTER_API_KEY" },
+        connected: Boolean(settings.has_openrouter_key),
+        model_prefix: "openrouter/",
+      },
+      {
+        id: "ollama",
+        name: "Ollama (local)",
+        kind: "local",
+        auth: { type: "none" },
+        connected: true,
+        model_prefix: "ollama/",
+        setup: {
+          type: "base_url",
+          default_base_url: DEFAULT_OLLAMA_BASE_URL,
+          base_url: settings.ollama_base_url || DEFAULT_OLLAMA_BASE_URL,
+        },
+      },
+      {
+        id: "ollama-cloud",
+        name: "Ollama Cloud",
+        kind: "cloud",
+        auth: { type: "api_key", env: "OLLAMA_API_KEY" },
+        connected: Boolean(settings.has_ollama_cloud_key),
+        model_prefix: "ollama-cloud/",
+      },
+      {
+        id: "deepseek",
+        name: "DeepSeek",
+        kind: "cloud",
+        auth: { type: "api_key", env: "DEEPSEEK_API_KEY" },
+        connected: false,
+        model_prefix: "deepseek/",
+      },
+      {
+        id: "lmstudio",
+        name: "LM Studio",
+        kind: "local",
+        auth: { type: "none" },
+        connected: true,
+        model_prefix: "lmstudio/",
+        setup: {
+          type: "base_url",
+          default_base_url: DEFAULT_LOCAL_BASE_URLS.lmstudio,
+          base_url: providerBaseUrl("lmstudio"),
+        },
+      },
+    ];
+  }
+
+  function applyProviderBaseUrls(settings) {
+    providerBaseUrls = new Map(Object.entries(DEFAULT_LOCAL_BASE_URLS));
+    const baseUrls = settings?.provider_base_urls || {};
+    Object.entries(baseUrls).forEach(([provider, baseUrl]) => {
+      const clean = String(baseUrl || "").trim().replace(/\/+$/, "");
+      if (provider && clean) {
+        providerBaseUrls.set(provider, clean);
+      }
+    });
+    if (settings?.ollama_base_url) {
+      providerBaseUrls.set("ollama", String(settings.ollama_base_url).trim().replace(/\/+$/, ""));
+    }
+  }
+
+  function providerBaseUrl(providerId) {
+    const id = String(providerId || "");
+    return providerBaseUrls.get(id) || DEFAULT_LOCAL_BASE_URLS[id] || "";
+  }
+
+  function providerBaseUrlPayload() {
+    return Object.fromEntries(providerBaseUrls.entries());
   }
 
   function currentModelLabel() {
-    return modelPicker?.displayName(currentModel) || currentModel;
+    return currentModel ? modelPicker?.displayName(currentModel) || currentModel : "No model";
+  }
+
+  function providerFromModel(modelId) {
+    const clean = cleanUiModelId(modelId);
+    const provider = providerRegistry
+      .slice()
+      .sort((a, b) => b.model_prefix.length - a.model_prefix.length)
+      .find((candidate) => candidate.model_prefix && clean.startsWith(candidate.model_prefix));
+    if (provider) {
+      return provider.id;
+    }
+    if (clean.includes("/")) {
+      return "openrouter";
+    }
+    return "";
+  }
+
+  function providerLabel(provider = currentProvider) {
+    const label = providerMetadata.get(provider)?.name;
+    if (label) {
+      return label;
+    }
+    return "Choose provider";
+  }
+
+  function updateProviderUi() {
+    providerStatuses.forEach((status) => {
+      status.textContent = providerLabel();
+      status.title = providerLabel();
+    });
+    if (providerDot) {
+      providerDot.classList.toggle("is-idle", !currentProvider);
+      providerDot.classList.toggle("is-ready", hasUsableModel());
+    }
+    renderProviderOptions();
+  }
+
+  function ollamaProviderLabel() {
+    return localProviderLabel("ollama", ollamaStatus);
+  }
+
+  function localProviderLabel(providerId, fallbackState = "unknown") {
+    const state = localProviderStatuses.get(providerId)?.state || fallbackState;
+    if (state === "checking") {
+      return "Checking";
+    }
+    if (state === "ready") {
+      return "Connected";
+    }
+    if (state === "empty") {
+      return "No models";
+    }
+    if (state === "offline") {
+      return "Offline";
+    }
+    return "Not connected";
+  }
+
+  function providerStatusLabel(provider) {
+    if (provider.kind === "local") {
+      return localProviderLabel(provider.id, provider.id === "ollama" ? ollamaStatus : "unknown");
+    }
+    if (provider.auth?.type === "api_key") {
+      return provider.connected ? "Connected" : "Not connected";
+    }
+    return provider.connected ? "Connected" : "Available";
+  }
+
+  function providerRequiresApiKey(providerId) {
+    return providerMetadata.get(providerId)?.auth?.type === "api_key";
+  }
+
+  function providerConnected(providerId) {
+    return Boolean(providerMetadata.get(providerId)?.connected);
+  }
+
+  function hasConnectedApiKeyProvider() {
+    return providerRegistry.some((provider) => provider.auth?.type === "api_key" && provider.connected);
+  }
+
+  function providerUsesBaseUrlSetup(providerId) {
+    return providerMetadata.get(providerId)?.setup?.type === "base_url";
+  }
+
+  function applyModelCatalog(catalog) {
+    lastModelCatalog = catalog || { models: [] };
+    openrouterCatalogStatus = lastModelCatalog.catalog_status || openrouterCatalogStatus;
+    ollamaStatus = String(lastModelCatalog.ollama_status?.state || ollamaStatus || "unknown");
+    ollamaBaseUrl = lastModelCatalog.ollama_status?.base_url || ollamaBaseUrl;
+    providerBaseUrls.set("ollama", ollamaBaseUrl);
+    localProviderStatuses = new Map(
+      Object.entries(lastModelCatalog.local_provider_statuses || {}),
+    );
+    localProviderStatuses.forEach((status, providerId) => {
+      if (status?.base_url) {
+        providerBaseUrls.set(providerId, String(status.base_url));
+      }
+    });
+    const models = Array.isArray(lastModelCatalog.models) ? lastModelCatalog.models : [];
+    const daemonOllamaModels = models.filter((model) => String(model?.id || "").startsWith("ollama/"));
+    ollamaModels = daemonOllamaModels;
+    if (currentProviderIsLocal() && !localModelAvailable(currentModel)) {
+      currentModel = "";
+    }
+    modelPicker?.applyCatalog({
+      ...lastModelCatalog,
+      catalog_status: openrouterCatalogStatus,
+      refreshing: catalogRefreshInFlight,
+      providers: providerRegistry,
+    });
+    updateProviderUi();
+    updateModelUi();
+    updateChatSize();
+  }
+
+  function updateModelUi() {
+    modelStatuses.forEach((status) => {
+      status.textContent = currentModelLabel();
+      status.title = currentModel || "No model selected";
+    });
+    if (modelInput) {
+      modelInput.value = currentModel;
+    }
+    sendButton?.classList.toggle("is-blocked", !hasUsableModel());
+  }
+
+  function hasUsableModel() {
+    if (!currentModel || !currentProvider) {
+      return false;
+    }
+    if (currentProviderIsLocal()) {
+      return localModelAvailable(currentModel);
+    }
+    if (providerRequiresApiKey(currentProvider)) {
+      return providerConnected(currentProvider);
+    }
+    return true;
+  }
+
+  function currentProviderIsLocal() {
+    return providerMetadata.get(currentProvider)?.kind === "local";
+  }
+
+  function localModelAvailable(modelId) {
+    const clean = cleanUiModelId(modelId);
+    if (!clean) {
+      return false;
+    }
+    return (lastModelCatalog?.models || []).some((model) => {
+      const id = String(model?.id || "");
+      return id === clean && model?.source === "local";
+    });
   }
 
   function selectModel(modelId) {
@@ -651,20 +1485,30 @@
     if (!clean) {
       return;
     }
+    currentProvider = providerFromModel(clean) || currentProvider;
     currentModel = clean;
-    if (modelInput) {
-      modelInput.value = clean;
-    }
-    modelStatuses.forEach((status) => {
-      status.textContent = currentModelLabel();
-      status.title = clean;
-    });
+    updateProviderUi();
+    updateModelUi();
     updateChatSize();
     saveCurrentChatSettings();
   }
 
   function cleanReasoningEffort(effort) {
     return ["low", "medium", "high"].includes(effort) ? effort : "medium";
+  }
+
+  function cleanChatSurface(surface) {
+    return surface === CHAT_SURFACE_BROWSER ? CHAT_SURFACE_BROWSER : CHAT_SURFACE_EMBEDDED;
+  }
+
+  function selectedChatSurface() {
+    return chatSurfaceBrowserInput?.checked ? CHAT_SURFACE_BROWSER : CHAT_SURFACE_EMBEDDED;
+  }
+
+  function updateChatSurfaceRestartNotice(surface = selectedChatSurface()) {
+    if (chatSurfaceRestartStatus) {
+      chatSurfaceRestartStatus.hidden = cleanChatSurface(surface) === RUNTIME_CHAT_SURFACE;
+    }
   }
 
   function effortLabel(effort) {
@@ -695,8 +1539,58 @@
       request_id: nextRequestId("silent-settings"),
       model: cleanUiModelId(modelInput?.value || currentModel),
       reasoning_effort: currentReasoningEffort,
+      ollama_base_url: ollamaBaseUrl,
+      provider_base_urls: providerBaseUrlPayload(),
     };
     return send(payload);
+  }
+
+  function chooseProvider(provider) {
+    if (!providerMetadata.has(provider)) {
+      return;
+    }
+    currentProvider = provider;
+    closeProviderPicker();
+    if (currentModel && providerFromModel(currentModel) !== provider) {
+      currentModel = "";
+    }
+    updateProviderUi();
+    updateModelUi();
+    updateChatSize();
+    if (providerRequiresApiKey(provider) && !providerConnected(provider)) {
+      openProviderKeyPrompt(provider);
+      requestModelList();
+      return;
+    }
+    if (providerUsesBaseUrlSetup(provider)) {
+      openOllamaSetupPrompt();
+      requestModelList({ refreshOllama: true });
+      return;
+    }
+    requestModelList();
+  }
+
+  function saveOllamaProvider() {
+    const provider = currentProvider && providerUsesBaseUrlSetup(currentProvider) ? currentProvider : "ollama";
+    const defaultBaseUrl = providerMetadata.get(provider)?.setup?.default_base_url || DEFAULT_OLLAMA_BASE_URL;
+    const nextBaseUrl = String(ollamaBaseUrlInput?.value || providerBaseUrl(provider) || defaultBaseUrl).trim() || defaultBaseUrl;
+    providerBaseUrls.set(provider, nextBaseUrl.replace(/\/+$/, ""));
+    if (provider === "ollama") {
+      ollamaBaseUrl = providerBaseUrl(provider);
+    }
+    currentProvider = provider;
+    closeOllamaSetupPrompt();
+    send({
+      type: "save_settings",
+      request_id: nextRequestId("save-local-provider"),
+      reasoning_effort: currentReasoningEffort,
+      ollama_base_url: ollamaBaseUrl,
+      provider_base_urls: providerBaseUrlPayload(),
+    });
+    requestModelList({ refreshOllama: true });
+    modelPicker?.open();
+    appendSystem(`Checking local ${providerLabel(provider)} models.`);
+    window.setTimeout(clearSystemStatus, 1200);
   }
 
   function setSettingsSaving(saving) {
@@ -731,15 +1625,47 @@
       const requestId = String(message.request_id || "");
       const isExplicitSave = requestId.startsWith("save-settings");
       applySettings(message.settings, { preserveTypedKey: !isExplicitSave });
+      if (requestId.startsWith("save-settings-key")) {
+        currentProvider = keyPromptProvider || currentProvider;
+        if (currentModel && providerFromModel(currentModel) !== currentProvider) {
+          currentModel = "";
+        }
+        updateProviderUi();
+        updateModelUi();
+        updateChatSize();
+      }
+      if (requestId.startsWith("save-ollama-provider") || requestId.startsWith("save-local-provider")) {
+        currentProvider = providerUsesBaseUrlSetup(currentProvider) ? currentProvider : "ollama";
+        if (currentModel && providerFromModel(currentModel) !== currentProvider) {
+          currentModel = "";
+        }
+        updateProviderUi();
+        updateModelUi();
+        updateChatSize();
+      }
       if (message.type === "settings_saved") {
+        const restartNeeded = currentChatSurface !== RUNTIME_CHAT_SURFACE;
         if (pendingSettingsPayload?.request_id === message.request_id) {
           pendingSettingsPayload = null;
           setSettingsSaving(false);
-          settingsDialog?.close();
+          if (!restartNeeded) {
+            settingsDialog?.close();
+          }
+          closeOpenRouterKeyPrompt();
         }
         if (!requestId.startsWith("silent-settings")) {
-          appendSystem("Settings saved locally.");
-          window.setTimeout(clearSystemStatus, 1200);
+          appendSystem(
+            restartNeeded && requestId.startsWith("save-settings")
+              ? "Settings saved locally. Restart Godot for the chat display change to take effect."
+              : "Settings saved locally.",
+          );
+          window.setTimeout(clearSystemStatus, restartNeeded ? 7000 : 1200);
+        }
+        if (!restartNeeded && hasConnectedApiKeyProvider() && requestId.startsWith("save-settings")) {
+          refreshModelCatalog(true);
+          modelPicker?.open();
+        } else {
+          requestModelList();
         }
       } else {
         clearSystemStatus();
@@ -756,12 +1682,24 @@
       return;
     }
     if (message.type === "model_list") {
-      modelPicker?.applyCatalog(message.catalog);
-      modelStatuses.forEach((status) => {
-        status.textContent = currentModelLabel();
-        status.title = currentModel;
+      applyModelCatalog(message.catalog);
+      return;
+    }
+    if (message.type === "catalog_refresh_result") {
+      catalogRefreshInFlight = false;
+      openrouterCatalogStatus = message.status || openrouterCatalogStatus;
+      modelPicker?.applyCatalog({
+        ...(lastModelCatalog || {}),
+        catalog_status: openrouterCatalogStatus,
+        refreshing: false,
+        error: message.ok ? null : message.error?.message || "Catalog refresh failed.",
+        providers: providerRegistry,
       });
-      updateChatSize();
+      requestModelList();
+      if (!message.ok) {
+        appendSystem(message.error?.message || "Could not refresh model catalog.");
+        window.setTimeout(clearSystemStatus, 1600);
+      }
       return;
     }
     if (message.type === "project_status") {
@@ -771,17 +1709,10 @@
     if (message.type === "chat_opened") {
       activeChatId = message.chat?.id || null;
       updateChatTitle(message.chat);
-      currentModel = message.chat?.model || currentModel;
-      currentReasoningEffort = cleanReasoningEffort(message.chat?.reasoning_effort || currentReasoningEffort);
-      modelStatuses.forEach((status) => {
-        status.textContent = currentModelLabel();
-        status.title = currentModel;
-      });
-      reasoningEffortControls.forEach((control) => {
-        control.value = currentReasoningEffort;
-      });
-      updateComposerEffort();
       renderStoredMessages(message.messages || []);
+      if (!message.request_id) {
+        restorePendingOptimisticUserMessages(activeChatId);
+      }
       if (message.reverted && typeof message.restored_message === "string" && prompt) {
         prompt.value = message.restored_message;
         resizePrompt();
@@ -798,7 +1729,6 @@
     if (message.type === "chat_created") {
       activeChatId = message.chat?.id || activeChatId;
       updateChatTitle(message.chat);
-      currentModel = message.chat?.model || currentModel;
       sessionCost = Number(message.chat?.total_cost || 0);
       latestPromptTokens = Number(message.chat?.latest_prompt_tokens || 0);
       updateChatSize();
@@ -820,18 +1750,33 @@
       }
       return;
     }
+    if (message.type === "chat_user_message") {
+      clearSystemStatus();
+      setStreaming(true);
+      transcriptRenderer.resetActiveAssistant();
+      activeTurnCost = 0;
+      activeChatId = message.chat_id || activeChatId;
+      const requestKey = String(message.request_id || "");
+      const usedOptimisticMessage = hasConnectedOptimisticUserMessage(requestKey);
+      if (message.user_message && !usedOptimisticMessage) {
+        appendDaemonUserMessage(message.user_message, requestKey);
+      }
+      optimisticUserMessageRequests.delete(requestKey);
+      canRevert = false;
+      updateRevertButton();
+      return;
+    }
     if (message.type === "chat_stream_start") {
       clearSystemStatus();
       setStreaming(true);
-      transcriptRenderer.resetStreamState();
+      transcriptRenderer.resetActiveAssistant();
       activeTurnCost = 0;
       activeChatId = message.chat_id || activeChatId;
       if (message.user_message) {
-        appendMessage(
-          "user",
-          message.user_message.content || "",
-          imagesFromMetadata(message.user_message.metadata_json),
-        );
+        const requestKey = String(message.request_id || "");
+        if (!hasConnectedOptimisticUserMessage(requestKey)) {
+          appendDaemonUserMessage(message.user_message, requestKey);
+        }
       }
       canRevert = Boolean(message.can_revert);
       updateRevertButton();
@@ -869,33 +1814,47 @@
       const turnUsage = { ...(message.usage || {}), cost: activeTurnCost };
       transcriptRenderer.addAssistantActions(turnUsage, formatUsageCost);
       activeTurnCost = 0;
+      transcriptRenderer.finishActiveThinking();
       transcriptRenderer.resetActiveAssistant();
       setStreaming(false);
       updateRevertButton();
+      optimisticUserMessageRequests.delete(String(message.request_id || ""));
       return;
     }
     if (message.type === "chat_cancelled") {
       clearSystemStatus();
       updateAssistantText(message.response || "");
+      transcriptRenderer.finishActiveThinking();
       transcriptRenderer.resetActiveAssistant();
       setStreaming(false);
       canRevert = Boolean(message.can_revert ?? true);
       updateRevertButton();
       appendSystem("Cancelled.");
       window.setTimeout(clearSystemStatus, 1200);
+      optimisticUserMessageRequests.delete(String(message.request_id || ""));
       return;
     }
     if (message.type === "error") {
-      appendSystem(message.message || "Chat request failed.");
+      const errorText = message.message || "Chat request failed.";
+      if (chatStreaming) {
+        updateAssistantText(`Request failed: ${errorText}`);
+      }
+      appendSystem(errorText);
       if (pendingSettingsPayload?.request_id === message.request_id) {
         pendingSettingsPayload = null;
         setSettingsSaving(false);
       }
+      transcriptRenderer.finishActiveThinking();
       transcriptRenderer.resetActiveAssistant();
       setStreaming(false);
       updateRevertButton();
-      if (message.code === "missing_openrouter_key") {
-        openSettings();
+      optimisticUserMessageRequests.delete(String(message.request_id || ""));
+      if (message.code === "provider_auth_error" || message.code === "missing_openrouter_key") {
+        if (currentProvider && providerRequiresApiKey(currentProvider)) {
+          openProviderKeyPrompt(currentProvider);
+        } else {
+          openProviderPicker();
+        }
       }
     }
   }
@@ -928,7 +1887,12 @@
   function startNewChat() {
     closeDrawer();
     clearTranscript(true);
-    send({ type: "new_chat", request_id: nextRequestId("new-chat") });
+    send({
+      type: "new_chat",
+      request_id: nextRequestId("new-chat"),
+      model: cleanUiModelId(modelInput?.value || currentModel),
+      reasoning_effort: currentReasoningEffort,
+    });
     prompt.value = "";
     clearAttachments();
     resizePrompt();
@@ -1246,6 +2210,69 @@
   document.querySelectorAll("[data-open-model-picker]").forEach((button) => {
     button.addEventListener("click", openModelPicker);
   });
+  commandOptionButtons.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      runCommand(button.dataset.commandOption || "");
+    });
+  });
+  providerSearch?.addEventListener("input", renderProviderOptions);
+  providerSearch?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeProviderPicker();
+      focusComposer();
+    }
+  });
+  providerKeyPopover?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeOpenRouterKeyPrompt();
+      focusComposer();
+    }
+  });
+  ollamaSetupPopover?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeOllamaSetupPrompt();
+      focusComposer();
+    }
+  });
+  providerKeyForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const key = providerKeyInlineInput?.value.trim() || "";
+    if (!key) {
+      providerKeyInlineInput?.focus();
+      return;
+    }
+    const provider = keyPromptProvider || currentProvider || "openrouter";
+    currentProvider = provider;
+    if (currentModel && providerFromModel(currentModel) !== provider) {
+      currentModel = "";
+    }
+    updateProviderUi();
+    updateModelUi();
+    updateChatSize();
+    const payload = {
+      type: "save_settings",
+      request_id: nextRequestId("save-settings-key"),
+      model: cleanUiModelId(modelInput?.value || currentModel),
+      reasoning_effort: currentReasoningEffort,
+      ollama_base_url: ollamaBaseUrl,
+      provider_base_urls: providerBaseUrlPayload(),
+      provider_api_keys: {
+        [provider]: key,
+      },
+    };
+    queueSettingsSave(payload);
+  });
+  ollamaForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveOllamaProvider();
+  });
 
   if (reloadButton) {
     reloadButton.hidden = !SHOW_RELOAD_BUTTON;
@@ -1337,12 +2364,15 @@
       request_id: nextRequestId("save-settings"),
       model: cleanUiModelId(modelInput?.value || currentModel),
       reasoning_effort: currentReasoningEffort,
+      ollama_base_url: ollamaBaseUrl,
+      provider_base_urls: providerBaseUrlPayload(),
+      chat_surface: selectedChatSurface(),
     };
-    const key = apiKeyInput?.value.trim();
-    if (key) {
-      payload.openrouter_api_key = key;
-    }
     queueSettingsSave(payload);
+  });
+
+  chatSurfaceBrowserInput?.addEventListener("change", () => {
+    updateChatSurfaceRestartNotice();
   });
 
   reasoningEffortControls.forEach((control) => {
@@ -1373,18 +2403,77 @@
   });
   document.addEventListener("click", (event) => {
     closeDrawerFromOutsideClick(event);
+    if (
+      commandPopover &&
+      commandPopover.hidden === false &&
+      !commandPopover.contains(event.target) &&
+      !prompt?.contains(event.target)
+    ) {
+      closeCommandPalette();
+    }
+    if (
+      providerPopover &&
+      providerPopover.hidden === false &&
+      !providerPopover.contains(event.target)
+    ) {
+      closeProviderPicker();
+    }
+    if (
+      providerKeyPopover &&
+      providerKeyPopover.hidden === false &&
+      !providerKeyPopover.contains(event.target)
+    ) {
+      closeOpenRouterKeyPrompt();
+    }
+    if (
+      ollamaSetupPopover &&
+      ollamaSetupPopover.hidden === false &&
+      !ollamaSetupPopover.contains(event.target)
+    ) {
+      closeOllamaSetupPrompt();
+    }
     setEffortMenuOpen(false);
     setUsagePopoverOpen(false);
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      const hadOverlayOpen =
+        providerPopover?.hidden === false ||
+        providerKeyPopover?.hidden === false ||
+        ollamaSetupPopover?.hidden === false ||
+        modelPopover?.hidden === false ||
+        commandPopover?.hidden === false ||
+        effortOptions?.hidden === false ||
+        usagePopover?.hidden === false;
       setEffortMenuOpen(false);
       setUsagePopoverOpen(false);
+      modelPicker?.close();
+      closeProviderPicker();
+      closeOpenRouterKeyPrompt();
+      closeOllamaSetupPrompt();
+      closeCommandPalette();
       closeDrawer();
+      if (hadOverlayOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        focusComposer();
+      }
     }
+  }, true);
+  window.addEventListener("resize", () => {
+    positionUsagePopover();
+    positionProviderPopover();
+    positionProviderKeyPrompt();
+    positionOllamaSetupPrompt();
+    positionCommandPalette();
   });
-  window.addEventListener("resize", positionUsagePopover);
-  window.addEventListener("scroll", positionUsagePopover, true);
+  window.addEventListener("scroll", () => {
+    positionUsagePopover();
+    positionProviderPopover();
+    positionProviderKeyPrompt();
+    positionOllamaSetupPrompt();
+    positionCommandPalette();
+  }, true);
 
   composer?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1395,16 +2484,25 @@
     if (!text && attachedImages.length === 0) {
       return;
     }
-    if (!hasOpenRouterKey) {
-      openSettings();
+    if (!currentProvider) {
+      openProviderPicker();
+      return;
+    }
+    if (!currentModel) {
+      openModelPicker();
+      return;
+    }
+    if (providerRequiresApiKey(currentProvider) && !providerConnected(currentProvider)) {
+      openProviderKeyPrompt(currentProvider);
       return;
     }
     const model = cleanUiModelId(modelInput?.value || currentModel);
     currentReasoningEffort = cleanReasoningEffort(currentReasoningEffort);
     transcriptRenderer.resetStreamState();
+    const requestId = nextRequestId("chat");
     const payload = {
       type: "send_chat",
-      request_id: nextRequestId("chat"),
+      request_id: requestId,
       chat_id: activeChatId,
       message: text,
       model,
@@ -1415,9 +2513,22 @@
       payload.images = images;
     }
     if (send(payload)) {
+      setStreaming(true);
+      activeTurnCost = 0;
+      canRevert = false;
+      updateRevertButton();
+      const optimisticNode = appendMessage("user", text, images);
+      optimisticUserMessageRequests.set(requestId, {
+        node: optimisticNode,
+        text,
+        images,
+        chatId: activeChatId,
+      });
       prompt.value = "";
       clearAttachments();
       resizePrompt();
+    } else {
+      optimisticUserMessageRequests.delete(requestId);
     }
   });
 
@@ -1440,13 +2551,41 @@
       window.setTimeout(requestNativePastedImage, 0);
       return;
     }
+    if (commandPopover && commandPopover.hidden === false) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveCommandSelection(1);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveCommandSelection(-1);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeCommandPalette();
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        const button = visibleCommandButtons()[activeCommandIndex];
+        if (button) {
+          event.preventDefault();
+          runCommand(button.dataset.commandOption || "");
+          return;
+        }
+      }
+    }
     if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
       return;
     }
     event.preventDefault();
     composer?.requestSubmit();
   });
-  prompt?.addEventListener("input", resizePrompt);
+  prompt?.addEventListener("input", () => {
+    resizePrompt();
+    updateCommandPalette();
+  });
   prompt?.addEventListener("paste", (event) => {
     const directFiles = Array.from(event.clipboardData?.files || []);
     const itemFiles = Array.from(event.clipboardData?.items || [])
@@ -1469,6 +2608,8 @@
   clearTranscript();
   appendSystem("Connecting to local daemon...");
   resizePrompt();
+  updateProviderUi();
+  updateModelUi();
   updateChatSize();
   updateSessionCost();
   connect();

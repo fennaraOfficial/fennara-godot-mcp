@@ -7,16 +7,16 @@ Fennara gives MCP clients a live connection to Godot. Agents can inspect scenes,
 
 It is built for Godot projects where file edits are not enough. Node paths, exported variables, scene resources, runtime logs, screenshots, and editor diagnostics all matter.
 
-Fennara also includes an in-editor chat dock backed by the same local daemon. The chat can use project-aware tools, show the active MCP target, store its OpenRouter key locally, and attach image context when supported by the selected model.
+Fennara also includes an optional in-editor chat dock backed by the same local daemon. The chat can use project-aware tools, show the active MCP target, store provider settings locally, and attach image context when supported by the selected model.
 
-The built-in chat requires your own [OpenRouter](https://openrouter.ai/) API key. Create a key from [OpenRouter Keys](https://openrouter.ai/keys), then paste it into the Fennara chat settings inside Godot. Fennara stores that key locally through the daemon and does not put it in the Godot project. MCP clients can still use Fennara's tools through their own model/app setup.
+External MCP apps and the built-in chat are separate model paths. `fennara mcp-setup --claude` lets Claude use Fennara's Godot tools; it does not make the built-in dock use Claude or your Claude subscription. The dock uses the provider configured in Fennara chat settings, such as OpenRouter, Ollama Cloud, DeepSeek, Z.AI, local Ollama, or LM Studio. See [MCP Apps And Built-In Chat](docs/chat-vs-mcp.md) and [Built-In Chat Providers](docs/providers.md).
 
 ## Requirements
 
 - Godot 4.5 or newer.
 - A supported desktop OS: Windows x86_64, Linux x86_64, or macOS arm64.
 - An MCP-capable coding app such as Claude, Codex, Cursor, Gemini, or Antigravity.
-- An [OpenRouter API key](https://openrouter.ai/keys) only if you want to use the built-in Fennara chat dock.
+- A chat provider only if you want to use the built-in Fennara chat dock. External MCP apps use their own model setup.
 
 For the full install walkthrough, see [Setup](docs/setup.md).
 
@@ -28,7 +28,7 @@ For the full install walkthrough, see [Setup](docs/setup.md).
 - a Godot addon copied into `res://addons/fennara/`
 - generated project guidance for AI agents
 
-On Linux, the embedded chat webview uses a shared CEF runtime installed once under the user's Fennara app-data directory. The CEF runtime is separate from the Godot addon so every project does not carry a browser engine copy.
+The built-in chat dock uses the platform webview: Microsoft Edge WebView2 on Windows, WKWebView/WebKit on macOS, and a Fennara-managed shared CEF runtime on Linux. MCP tools still work if the optional chat dock cannot start.
 
 ## Quick Start
 
@@ -112,6 +112,8 @@ fennara mcp-setup --help
 
 Restart the MCP app after setup so it reloads the Fennara server.
 
+This step only configures the external MCP app. It does not configure the built-in Fennara chat model. See [MCP Apps And Built-In Chat](docs/chat-vs-mcp.md) if you are wondering why the dock asks for a provider even after `mcp-setup --claude`.
+
 ### 4. Verify It Works
 
 With the Godot project open, ask your MCP app:
@@ -133,7 +135,7 @@ cd path/to/your-godot-project
 fennara update
 ```
 
-`fennara update` reads the release manifest, then refreshes the project addon, local runtime package, generated Fennara guidance files, and any release-managed shared webview runtime needed by the current platform. Rerun the install script only when the CLI says a release requires a newer outer CLI.
+`fennara update` reads the release manifest, updates the installed CLI when a newer release requires it, then refreshes the project addon, local runtime package, generated Fennara guidance files, and any release-managed shared webview runtime needed by the current platform. On Windows/macOS it also checks the platform webview prerequisite and warns if the built-in chat dock may not start. Rerun the install script only if CLI self-update is not available for the selected release or install location.
 
 ## Tools
 
@@ -153,11 +155,16 @@ The goal is not to replace an agent's normal file tools. Fennara gives the missi
 
 The Fennara dock includes a native web chat surface inside Godot. It talks to the local daemon, not a hosted Fennara backend.
 
-- Bring your own [OpenRouter API key](https://openrouter.ai/keys) for built-in chat.
-- OpenRouter API keys are saved locally by the daemon, outside the Godot project.
+- Bring your own cloud provider key, or run a local provider such as Ollama or LM Studio.
+- Supported chat providers include OpenRouter, Ollama Cloud, DeepSeek, Z.AI, local Ollama, and LM Studio.
+- Provider API keys and local base URL settings are saved locally by the daemon, outside the Godot project.
+- Chat display can stay embedded in Godot, or use the system browser next time if you enable **Open chat in my system browser next time** in Chat Settings.
+- Use `/provider` to connect or switch providers and `/model` to choose a model in the dock.
 - Chat history is stored locally and scoped to the current project.
-- Image attachments can be pasted or selected from the composer and sent as model context when the selected OpenRouter model supports vision.
+- Image attachments can be pasted or selected from the composer and sent as model context when the selected provider model supports vision. Ollama image input is not enabled yet.
 - The dock shows whether the current project is the MCP target for external MCP clients.
+
+More detail: [Built-In Chat Providers](docs/providers.md), [Built-In Chat Slash Commands](docs/slash-commands.md).
 
 ## Demos
 

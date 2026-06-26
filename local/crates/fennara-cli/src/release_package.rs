@@ -1,15 +1,9 @@
 use crate::app_layout::{AppLayout, arch_name, binary_name, display_path, platform_name};
+use crate::release_client::{self, DownloadAsset, Release};
 use crate::release_manifest::ReleaseManifest;
 use crate::webview_runtime;
-use serde_json::Value;
-use sha2::{Digest, Sha256};
-use std::env;
 use std::fs;
-use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
-use zip::ZipArchive;
-
-const REPO: &str = "fennaraOfficial/fennara-godot-ai";
 
 pub struct InstalledPackage {
     pub version: String,
@@ -20,10 +14,11 @@ pub fn ensure_package(version_request: &str) -> Result<InstalledPackage, String>
     let layout = AppLayout::detect()?;
     layout.ensure_base_dirs()?;
 
-    let release = fetch_release(version_request)?;
+    let release = release_client::fetch_release(version_request)?;
     if let Some(manifest_asset) = release.manifest_asset() {
-        let bytes = download_bytes(manifest_asset.url, manifest_asset.name)?;
+        let bytes = release_client::download_bytes(&manifest_asset.url, &manifest_asset.name)?;
         let manifest = ReleaseManifest::parse(&bytes)?;
+        manifest.validate_for_install()?;
         return ensure_manifest_package(&layout, &release, &manifest);
     }
 
@@ -57,12 +52,12 @@ fn ensure_manifest_package(
         layout,
         &selection.version,
         DownloadAsset {
-            url: local_asset.url,
+            url: &local_asset.url,
             expected_sha256: Some(selection.local.sha256.as_str()),
             label: selection.local.name.as_str(),
         },
         DownloadAsset {
-            url: addon_asset.url,
+            url: &addon_asset.url,
             expected_sha256: Some(selection.addon.sha256.as_str()),
             label: selection.addon.name.as_str(),
         },
@@ -100,14 +95,14 @@ fn ensure_legacy_package(
         layout,
         &version,
         DownloadAsset {
-            url: local_asset.url,
+            url: &local_asset.url,
             expected_sha256: None,
-            label: local_asset.name,
+            label: &local_asset.name,
         },
         DownloadAsset {
-            url: addon_asset.url,
+            url: &addon_asset.url,
             expected_sha256: None,
-            label: addon_asset.name,
+            label: &addon_asset.name,
         },
     )?;
 
@@ -134,7 +129,7 @@ fn ensure_selected_package(
         });
     }
 
-    let temp_dir = create_temp_dir()?;
+    let temp_dir = release_client::create_temp_dir("fennara-package")?;
     let result = install_from_assets(layout, &temp_dir, version, local_asset, addon_asset);
     let _ = fs::remove_dir_all(&temp_dir);
     result
@@ -172,8 +167,8 @@ fn install_from_assets(
 ) -> Result<InstalledPackage, String> {
     let local_dir = temp_dir.join("local");
     let addon_stage_dir = temp_dir.join("addon");
-    download_zip_to_dir(&local_asset, &local_dir)?;
-    download_zip_to_dir(&addon_asset, &addon_stage_dir)?;
+    release_client::download_zip_to_dir(&local_asset, &local_dir)?;
+    release_client::download_zip_to_dir(&addon_asset, &addon_stage_dir)?;
 
     let package_version = fs::read_to_string(local_dir.join("VERSION"))
         .map_err(|err| format!("downloaded local package is missing VERSION: {err}"))?
@@ -243,148 +238,6 @@ fn write_manifest(layout: &AppLayout, version: &str) -> Result<(), String> {
             display_path(&layout.current_manifest_path)
         )
     })
-}
-
-struct Asset<'a> {
-    name: &'a str,
-    url: &'a str,
-    version: Option<String>,
-}
-
-struct Release {
-    tag: String,
-    assets: Value,
-}
-
-impl Release {
-    fn asset(&self, prefix: &str) -> Option<Asset<'_>> {
-        self.asset_by_prefix_suffix(prefix, ".zip")
-    }
-
-    fn manifest_asset(&self) -> Option<Asset<'_>> {
-        self.asset_by_prefix_suffix("fennara-release-manifest-v", ".json")
-    }
-
-    fn asset_by_name(&self, expected_name: &str) -> Option<Asset<'_>> {
-        self.assets.as_array()?.iter().find_map(|asset| {
-            let name = asset.get("name")?.as_str()?;
-            if name != expected_name {
-                return None;
-            }
-            let url = asset.get("browser_download_url")?.as_str()?;
-            Some(Asset {
-                name,
-                url,
-                version: version_from_asset_name(name),
-            })
-        })
-    }
-
-    fn asset_by_prefix_suffix(&self, prefix: &str, suffix: &str) -> Option<Asset<'_>> {
-        self.assets.as_array()?.iter().find_map(|asset| {
-            let name = asset.get("name")?.as_str()?;
-            if !name.starts_with(prefix) || !name.ends_with(suffix) {
-                return None;
-            }
-            let url = asset.get("browser_download_url")?.as_str()?;
-            Some(Asset {
-                name,
-                url,
-                version: version_from_asset_name(name),
-            })
-        })
-    }
-}
-
-struct DownloadAsset<'a> {
-    url: &'a str,
-    expected_sha256: Option<&'a str>,
-    label: &'a str,
-}
-
-fn fetch_release(version: &str) -> Result<Release, String> {
-    let tag = if version == "latest" {
-        "latest".to_string()
-    } else {
-        format!("v{version}")
-    };
-    let url = format!("https://api.github.com/repos/{REPO}/releases/tags/{tag}");
-    let response = ureq::get(&url)
-        .set("User-Agent", "fennara-cli")
-        .call()
-        .map_err(|err| format!("failed to fetch release metadata: {err}"))?;
-    let value: Value = response
-        .into_json()
-        .map_err(|err| format!("failed to parse release metadata: {err}"))?;
-
-    Ok(Release {
-        tag: value
-            .get("tag_name")
-            .and_then(Value::as_str)
-            .unwrap_or(&tag)
-            .to_string(),
-        assets: value.get("assets").cloned().unwrap_or(Value::Null),
-    })
-}
-
-fn version_from_asset_name(name: &str) -> Option<String> {
-    let marker = "-v";
-    let start = name.rfind(marker)? + marker.len();
-    let version = name.get(start..)?.strip_suffix(".zip")?;
-    if version.split('.').count() == 3 && version.chars().all(|c| c.is_ascii_digit() || c == '.') {
-        Some(version.to_string())
-    } else {
-        None
-    }
-}
-
-fn download_zip_to_dir(asset: &DownloadAsset<'_>, target: &Path) -> Result<(), String> {
-    fs::create_dir_all(target)
-        .map_err(|err| format!("failed to create {}: {err}", display_path(target)))?;
-    let bytes = download_bytes(asset.url, asset.label)?;
-    if let Some(expected_sha256) = asset.expected_sha256 {
-        let actual_sha256 = format!("{:x}", Sha256::digest(&bytes));
-        if !actual_sha256.eq_ignore_ascii_case(expected_sha256) {
-            return Err(format!(
-                "{} sha256 mismatch: expected {expected_sha256}, got {actual_sha256}",
-                asset.label
-            ));
-        }
-    }
-
-    let cursor = Cursor::new(bytes);
-    let mut archive =
-        ZipArchive::new(cursor).map_err(|err| format!("failed to open downloaded zip: {err}"))?;
-    archive
-        .extract(target)
-        .map_err(|err| format!("failed to extract zip into {}: {err}", display_path(target)))
-}
-
-fn download_bytes(url: &str, label: &str) -> Result<Vec<u8>, String> {
-    let response = ureq::get(url)
-        .set("User-Agent", "fennara-cli")
-        .call()
-        .map_err(|err| format!("failed to download {label} from {url}: {err}"))?;
-    let mut bytes = Vec::new();
-    response
-        .into_reader()
-        .read_to_end(&mut bytes)
-        .map_err(|err| format!("failed to read download for {label}: {err}"))?;
-    Ok(bytes)
-}
-
-fn create_temp_dir() -> Result<PathBuf, String> {
-    let path = env::temp_dir().join(format!(
-        "fennara-package-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_millis())
-            .unwrap_or(0)
-    ));
-    fs::create_dir_all(&path)
-        .map_err(|err| format!("failed to create {}: {err}", display_path(&path)))?;
-    Ok(path)
 }
 
 fn copy_file(source: &Path, target: &Path) -> Result<(), String> {

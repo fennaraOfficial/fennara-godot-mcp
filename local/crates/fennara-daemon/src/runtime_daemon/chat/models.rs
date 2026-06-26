@@ -1,24 +1,17 @@
-use futures_util::future::join_all;
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::time::Duration;
 
+use super::auth;
+use super::providers;
+use super::providers::ProviderId;
+use super::providers::catalog_cache;
+use super::providers::models_dev::{OpenRouterCatalog, OpenRouterCatalogModel};
 use super::settings::{self, ChatSettings};
 
-const OPENROUTER_MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
-const OPENROUTER_MODEL_URL: &str = "https://openrouter.ai/api/v1/models";
-const ENDPOINT_METADATA_TIMEOUT: Duration = Duration::from_secs(5);
-
-#[derive(Clone, Debug)]
-struct EndpointMetadata {
-    context_length: Option<u64>,
-    input_cost_per_million: Option<f64>,
-    output_cost_per_million: Option<f64>,
-    tokens_per_second: Option<f64>,
-    max_output_tokens: Option<u64>,
-}
+const LOCAL_MODELS_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct ModelCatalog {
@@ -27,12 +20,44 @@ pub(crate) struct ModelCatalog {
     pub(crate) custom_ids: Vec<String>,
     pub(crate) live: bool,
     pub(crate) error: Option<String>,
+    pub(crate) catalog_status: CatalogStatus,
+    pub(crate) ollama_status: OllamaStatus,
+    pub(crate) local_provider_statuses: BTreeMap<String, LocalProviderStatus>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct CatalogStatus {
+    pub(crate) provider: &'static str,
+    pub(crate) state: &'static str,
+    pub(crate) source_url: Option<String>,
+    pub(crate) fetched_at_ms: Option<u128>,
+    pub(crate) age_ms: Option<u128>,
+    pub(crate) using_stale: bool,
+    pub(crate) openrouter_model_count: usize,
+    pub(crate) last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct OllamaStatus {
+    pub(crate) state: &'static str,
+    pub(crate) base_url: String,
+    pub(crate) model_count: usize,
+    pub(crate) error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct LocalProviderStatus {
+    pub(crate) state: &'static str,
+    pub(crate) base_url: String,
+    pub(crate) model_count: usize,
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct ModelInfo {
     pub(crate) id: String,
     pub(crate) display_name: String,
+    pub(crate) provider_id: String,
     pub(crate) provider: String,
     pub(crate) source: &'static str,
     pub(crate) recommended: bool,
@@ -44,6 +69,8 @@ pub(crate) struct ModelInfo {
     pub(crate) max_output_tokens: Option<u64>,
     pub(crate) input_cost_per_million: Option<f64>,
     pub(crate) output_cost_per_million: Option<f64>,
+    pub(crate) cache_read_cost_per_million: Option<f64>,
+    pub(crate) cache_write_cost_per_million: Option<f64>,
     pub(crate) tokens_per_second: Option<f64>,
     pub(crate) modalities: Vec<String>,
     pub(crate) supports_tools: bool,
@@ -55,111 +82,385 @@ pub(crate) struct ModelInfo {
 pub(crate) async fn list_models(settings: &ChatSettings) -> ModelCatalog {
     let recommended_ids = settings::recommended_model_ids();
     let custom_ids = settings.custom_models.clone();
-    let ids = recommended_ids
-        .iter()
-        .map(|id| id.to_string())
-        .chain(custom_ids.iter().cloned())
-        .collect::<Vec<_>>();
+    catalog_cache::spawn_refresh_if_stale();
+    let has_saved_openrouter_key = auth::has_api_key(ProviderId::OPENROUTER)
+        || std::env::var("OPENROUTER_API_KEY")
+            .ok()
+            .is_some_and(|key| !key.trim().is_empty());
+    let has_ollama_cloud_key = auth::has_api_key(ProviderId::OLLAMA_CLOUD)
+        || std::env::var("OLLAMA_API_KEY")
+            .ok()
+            .is_some_and(|key| !key.trim().is_empty());
+    let has_zai_key = auth::has_api_key(ProviderId::ZAI)
+        || std::env::var("ZHIPU_API_KEY")
+            .ok()
+            .is_some_and(|key| !key.trim().is_empty());
+    let has_deepseek_key = auth::has_api_key(ProviderId::DEEPSEEK)
+        || std::env::var("DEEPSEEK_API_KEY")
+            .ok()
+            .is_some_and(|key| !key.trim().is_empty());
+    let cached_catalog = catalog_cache::load_disk().await;
+    let catalog_status = catalog_status(&cached_catalog);
+    let openrouter_error = cached_catalog.as_ref().err().cloned();
+    let needs_hosted_catalog =
+        has_saved_openrouter_key || has_ollama_cloud_key || has_deepseek_key || has_zai_key;
+    let mut models = Vec::new();
+    if has_saved_openrouter_key {
+        if let Ok(cached_catalog) = &cached_catalog {
+            append_openrouter_catalog_models(
+                &mut models,
+                &cached_catalog.catalog,
+                &recommended_ids,
+                &custom_ids,
+            );
+        }
+    }
+    if has_ollama_cloud_key {
+        if let Ok(cached_catalog) = &cached_catalog {
+            append_hosted_catalog_models(
+                &mut models,
+                &cached_catalog.ollama_cloud,
+                "Ollama Cloud",
+                ProviderId::OLLAMA_CLOUD,
+                &custom_ids,
+            );
+        }
+    }
+    if has_zai_key {
+        if let Ok(cached_catalog) = &cached_catalog {
+            append_hosted_catalog_models(
+                &mut models,
+                &cached_catalog.zai,
+                "Z.AI",
+                ProviderId::ZAI,
+                &custom_ids,
+            );
+        }
+    }
+    if has_deepseek_key {
+        if let Ok(cached_catalog) = &cached_catalog {
+            append_hosted_catalog_models(
+                &mut models,
+                &cached_catalog.deepseek,
+                "DeepSeek",
+                ProviderId::DEEPSEEK,
+                &custom_ids,
+            );
+        }
+    }
 
-    match fetch_openrouter_models(settings.openrouter_api_key.as_deref()).await {
-        Ok(openrouter_models) => {
-            let client = Client::new();
-            let by_id = openrouter_models
-                .iter()
-                .filter_map(|model| {
-                    model
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .map(|id| (id, model))
-                })
-                .collect::<HashMap<_, _>>();
-            let mut seen = HashSet::new();
-            let mut model_requests = Vec::new();
-            for id in ids {
-                if !seen.insert(id.clone()) {
-                    continue;
-                }
-                let raw = by_id.get(id.as_str()).copied().cloned();
-                let api_key = settings.openrouter_api_key.clone();
-                let client = client.clone();
-                model_requests.push(async move {
-                    let endpoint_metadata = tokio::time::timeout(
-                        ENDPOINT_METADATA_TIMEOUT,
-                        fetch_endpoint_metadata(&client, &id, api_key.as_deref()),
-                    )
-                    .await
-                    .ok()
-                    .flatten();
-                    (id, raw, endpoint_metadata)
-                });
-            }
-            let models = join_all(model_requests)
-                .await
-                .into_iter()
-                .map(|(id, raw, endpoint_metadata)| {
-                    model_info(
-                        &id,
-                        raw.as_ref(),
-                        endpoint_metadata.as_ref(),
-                        recommended_ids.contains(&id.as_str()),
-                        custom_ids.iter().any(|custom| custom == &id),
-                    )
-                })
-                .collect();
-            ModelCatalog {
-                models,
-                recommended_ids,
-                custom_ids,
-                live: true,
+    let ollama_result = tokio::time::timeout(
+        LOCAL_MODELS_TIMEOUT,
+        fetch_ollama_models(&settings.ollama_base_url),
+    )
+    .await
+    .unwrap_or_else(|_| Err("Ollama models request timed out.".to_string()));
+    let ollama_status = match ollama_result {
+        Ok(ollama_models) => {
+            append_ollama_models(&mut models, &ollama_models, &custom_ids);
+            OllamaStatus {
+                state: if ollama_models.is_empty() {
+                    "empty"
+                } else {
+                    "ready"
+                },
+                base_url: settings.ollama_base_url.clone(),
+                model_count: ollama_models.len(),
                 error: None,
             }
         }
-        Err(error) => {
-            let mut seen = HashSet::new();
-            let mut models = Vec::new();
-            for id in ids {
-                if !seen.insert(id.clone()) {
-                    continue;
-                }
-                models.push(model_info(
-                    &id,
-                    None,
-                    None,
-                    recommended_ids.contains(&id.as_str()),
-                    custom_ids.iter().any(|custom| custom == &id),
-                ));
-            }
-            ModelCatalog {
-                models,
-                recommended_ids,
-                custom_ids,
-                live: false,
-                error: Some(error),
+        Err(error) => OllamaStatus {
+            state: "offline",
+            base_url: settings.ollama_base_url.clone(),
+            model_count: 0,
+            error: Some(error),
+        },
+    };
+
+    let lmstudio_base_url = settings.provider_base_url(
+        ProviderId::LMSTUDIO,
+        providers::lmstudio_v1_base_url("").as_str(),
+    );
+    let lmstudio_result = tokio::time::timeout(
+        LOCAL_MODELS_TIMEOUT,
+        fetch_lmstudio_models(&lmstudio_base_url),
+    )
+    .await
+    .unwrap_or_else(|_| Err("LM Studio models request timed out.".to_string()));
+    let lmstudio_status = match lmstudio_result {
+        Ok(lmstudio_models) => {
+            let catalog = cached_catalog.as_ref().ok().map(|cached| &cached.lmstudio);
+            append_lmstudio_models(&mut models, &lmstudio_models, catalog, &custom_ids);
+            LocalProviderStatus {
+                state: if lmstudio_models.is_empty() {
+                    "empty"
+                } else {
+                    "ready"
+                },
+                base_url: lmstudio_base_url.clone(),
+                model_count: lmstudio_models.len(),
+                error: None,
             }
         }
+        Err(error) => LocalProviderStatus {
+            state: "offline",
+            base_url: lmstudio_base_url.clone(),
+            model_count: 0,
+            error: Some(error),
+        },
+    };
+
+    let mut local_provider_statuses = BTreeMap::new();
+    local_provider_statuses.insert(
+        ProviderId::OLLAMA.to_string(),
+        LocalProviderStatus {
+            state: ollama_status.state,
+            base_url: ollama_status.base_url.clone(),
+            model_count: ollama_status.model_count,
+            error: ollama_status.error.clone(),
+        },
+    );
+    local_provider_statuses.insert(ProviderId::LMSTUDIO.to_string(), lmstudio_status);
+
+    let ollama_live = matches!(ollama_status.state, "ready" | "empty");
+    let local_live = local_provider_statuses
+        .values()
+        .any(|status| matches!(status.state, "ready" | "empty"));
+    let live = openrouter_error.is_none() || ollama_live || local_live;
+    ModelCatalog {
+        models,
+        recommended_ids,
+        custom_ids,
+        live,
+        error: if needs_hosted_catalog {
+            openrouter_error
+        } else {
+            None
+        },
+        catalog_status,
+        ollama_status,
+        local_provider_statuses,
     }
 }
 
-async fn fetch_openrouter_models(api_key: Option<&str>) -> Result<Vec<Value>, String> {
-    let client = Client::new();
-    let mut request = client.get(OPENROUTER_MODELS_URL);
-    if let Some(api_key) = api_key.filter(|key| !key.trim().is_empty()) {
-        request = request.bearer_auth(api_key.trim());
+pub(crate) async fn refresh_model_catalog(force: bool) -> Result<CatalogStatus, String> {
+    let refreshed = catalog_cache::refresh(force).await;
+    let status = catalog_status(&refreshed);
+    refreshed.map(|_| status)
+}
+
+pub(crate) fn spawn_catalog_refresh_if_needed() {
+    catalog_cache::spawn_refresh_if_stale();
+}
+
+fn catalog_status(
+    cached_catalog: &Result<catalog_cache::CachedOpenRouterCatalog, String>,
+) -> CatalogStatus {
+    match cached_catalog {
+        Ok(cached) => CatalogStatus {
+            provider: "openrouter",
+            state: if cached.stale { "stale" } else { "ready" },
+            source_url: Some(cached.meta.source_url.clone()),
+            fetched_at_ms: Some(cached.meta.fetched_at_ms),
+            age_ms: cached.meta.age_ms(),
+            using_stale: cached.stale,
+            openrouter_model_count: cached.catalog.models.len(),
+            last_error: None,
+        },
+        Err(error) => CatalogStatus {
+            provider: "openrouter",
+            state: "empty",
+            source_url: Some(catalog_cache::DEFAULT_MODELS_DEV_URL.to_string()),
+            fetched_at_ms: None,
+            age_ms: None,
+            using_stale: false,
+            openrouter_model_count: 0,
+            last_error: Some(error.clone()),
+        },
     }
-    let response = request
+}
+
+fn append_openrouter_catalog_models(
+    models: &mut Vec<ModelInfo>,
+    catalog: &OpenRouterCatalog,
+    recommended_ids: &[&'static str],
+    custom_ids: &[String],
+) {
+    for model in &catalog.models {
+        let id = model.definition.id.as_str();
+        let prefixed_id = openrouter_model_id(id);
+        models.push(openrouter_catalog_model_info(
+            model,
+            recommended_ids.contains(&id),
+            custom_ids
+                .iter()
+                .any(|custom| custom == id || custom == &prefixed_id),
+        ));
+    }
+    for id in custom_ids.iter().filter(|id| {
+        !id.starts_with("ollama/")
+            && !id.starts_with("ollama-cloud/")
+            && !id.starts_with("lmstudio/")
+            && !id.starts_with("deepseek/")
+            && !id.starts_with("zai/")
+    }) {
+        if models
+            .iter()
+            .any(|model| model.id == *id || model.canonical_slug.as_deref() == Some(id.as_str()))
+        {
+            continue;
+        }
+        let mut model = model_info(id, None, recommended_ids.contains(&id.as_str()), true);
+        model.provider_id = ProviderId::OPENROUTER.to_string();
+        model.provider = "OpenRouter".to_string();
+        models.push(model);
+    }
+}
+
+fn append_hosted_catalog_models(
+    models: &mut Vec<ModelInfo>,
+    catalog: &OpenRouterCatalog,
+    provider_label: &str,
+    provider_id: &str,
+    custom_ids: &[String],
+) {
+    for catalog_model in &catalog.models {
+        let mut model = openrouter_catalog_model_info(
+            catalog_model,
+            false,
+            custom_ids
+                .iter()
+                .any(|custom| custom == &format!("{provider_id}/{}", catalog_model.definition.id)),
+        );
+        model.id = format!("{provider_id}/{}", catalog_model.definition.id);
+        model.provider_id = provider_id.to_string();
+        model.provider = provider_label.to_string();
+        model.canonical_slug = Some(catalog_model.definition.id.to_string());
+        models.push(model);
+    }
+}
+
+fn openrouter_catalog_model_info(
+    catalog_model: &OpenRouterCatalogModel,
+    recommended: bool,
+    custom: bool,
+) -> ModelInfo {
+    let definition = &catalog_model.definition;
+    let mut modalities = definition
+        .capabilities
+        .input
+        .iter()
+        .map(|modality| format!("in:{modality}"))
+        .chain(
+            definition
+                .capabilities
+                .output
+                .iter()
+                .map(|modality| format!("out:{modality}")),
+        )
+        .collect::<Vec<_>>();
+    modalities.sort();
+    modalities.dedup();
+    ModelInfo {
+        id: openrouter_model_id(definition.id.as_str()),
+        display_name: definition.display_name.clone(),
+        provider_id: ProviderId::OPENROUTER.to_string(),
+        provider: "OpenRouter".to_string(),
+        source: if custom { "custom" } else { "catalog" },
+        recommended,
+        custom,
+        verified: true,
+        latest_alias: false,
+        canonical_slug: Some(definition.id.to_string()),
+        context_length: definition.limits.context_tokens.map(u64::from),
+        max_output_tokens: definition.limits.output_tokens.map(u64::from),
+        input_cost_per_million: catalog_model.input_cost_per_million,
+        output_cost_per_million: catalog_model.output_cost_per_million,
+        cache_read_cost_per_million: catalog_model.cache_read_cost_per_million,
+        cache_write_cost_per_million: catalog_model.cache_write_cost_per_million,
+        tokens_per_second: None,
+        modalities,
+        supports_tools: definition.capabilities.tools,
+        supports_reasoning: definition.capabilities.reasoning,
+        supported_reasoning_efforts: if definition.capabilities.reasoning {
+            vec!["low".to_string(), "medium".to_string(), "high".to_string()]
+        } else {
+            Vec::new()
+        },
+        description: catalog_model.family.as_ref().map(|family| {
+            if catalog_model.status == "beta" {
+                format!("{family} family. Beta model.")
+            } else {
+                format!("{family} family.")
+            }
+        }),
+    }
+}
+
+fn openrouter_model_id(model_id: &str) -> String {
+    let clean = model_id.trim();
+    if clean.starts_with("openrouter/") {
+        clean.to_string()
+    } else {
+        format!("openrouter/{clean}")
+    }
+}
+
+async fn fetch_ollama_models(base_url: &str) -> Result<Vec<Value>, String> {
+    let client = Client::builder()
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(LOCAL_MODELS_TIMEOUT)
+        .build()
+        .map_err(|error| format!("Failed to create Ollama HTTP client: {error}"))?;
+    let response = client
+        .get(format!(
+            "{}/api/tags",
+            providers::ollama_api_base_url(base_url)
+        ))
         .send()
         .await
-        .map_err(|error| format!("Failed to fetch OpenRouter models: {error}"))?;
+        .map_err(|error| format!("Failed to fetch Ollama models: {error}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "OpenRouter models request failed: {}",
+            "Ollama models request failed: {}",
             response.status()
         ));
     }
     let body: Value = response
         .json()
         .await
-        .map_err(|error| format!("OpenRouter models response was invalid: {error}"))?;
+        .map_err(|error| format!("Ollama models response was invalid: {error}"))?;
+    Ok(body
+        .get("models")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default())
+}
+
+async fn fetch_lmstudio_models(base_url: &str) -> Result<Vec<Value>, String> {
+    let client = Client::builder()
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(LOCAL_MODELS_TIMEOUT)
+        .build()
+        .map_err(|error| format!("Failed to create LM Studio HTTP client: {error}"))?;
+    let response = client
+        .get(format!(
+            "{}/models",
+            providers::lmstudio_v1_base_url(base_url)
+        ))
+        .send()
+        .await
+        .map_err(|error| format!("Failed to fetch LM Studio models: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "LM Studio models request failed: {}",
+            response.status()
+        ));
+    }
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|error| format!("LM Studio models response was invalid: {error}"))?;
     Ok(body
         .get("data")
         .and_then(Value::as_array)
@@ -167,74 +468,56 @@ async fn fetch_openrouter_models(api_key: Option<&str>) -> Result<Vec<Value>, St
         .unwrap_or_default())
 }
 
-async fn fetch_endpoint_metadata(
-    client: &Client,
-    model_id: &str,
-    api_key: Option<&str>,
-) -> Option<EndpointMetadata> {
-    let mut request = client.get(model_endpoint_url(model_id));
-    if let Some(api_key) = api_key.filter(|key| !key.trim().is_empty()) {
-        request = request.bearer_auth(api_key.trim());
+fn append_ollama_models(models: &mut Vec<ModelInfo>, raw_models: &[Value], custom_ids: &[String]) {
+    for raw in raw_models {
+        let Some(local_id) = raw
+            .get("name")
+            .or_else(|| raw.get("model"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        let id = format!("ollama/{local_id}");
+        if models.iter().any(|model| model.id == id) {
+            continue;
+        }
+        models.push(ollama_model_info(
+            &id,
+            Some(raw),
+            custom_ids.iter().any(|custom| custom == &id),
+            true,
+        ));
     }
-    let response = request.send().await.ok()?;
-    if !response.status().is_success() {
-        return None;
-    }
-    let body = response.json::<Value>().await.ok()?;
-    let endpoints = body
-        .get("data")
-        .and_then(|data| data.get("endpoints"))
-        .and_then(Value::as_array)?;
-    let active = endpoints
-        .iter()
-        .filter(|endpoint| endpoint.get("status").and_then(Value::as_i64).unwrap_or(0) == 0)
-        .collect::<Vec<_>>();
-    let mut candidates = if active.is_empty() {
-        endpoints.iter().collect::<Vec<_>>()
-    } else {
-        active
-    };
-    candidates.sort_by(|a, b| {
-        let a_tps = throughput_tokens_per_second(a.get("throughput_last_30m")).unwrap_or(-1.0);
-        let b_tps = throughput_tokens_per_second(b.get("throughput_last_30m")).unwrap_or(-1.0);
-        b_tps
-            .partial_cmp(&a_tps)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let endpoint = candidates.first().copied()?;
-    Some(EndpointMetadata {
-        context_length: endpoint.get("context_length").and_then(Value::as_u64),
-        input_cost_per_million: endpoint
-            .get("pricing")
-            .and_then(|pricing| pricing.get("prompt"))
-            .and_then(price_per_million),
-        output_cost_per_million: endpoint
-            .get("pricing")
-            .and_then(|pricing| pricing.get("completion"))
-            .and_then(price_per_million),
-        tokens_per_second: average_top_throughput(&candidates),
-        max_output_tokens: endpoint
-            .get("max_completion_tokens")
-            .and_then(Value::as_u64),
-    })
 }
 
-fn model_endpoint_url(model_id: &str) -> String {
-    let encoded = model_id
-        .split('/')
-        .map(encode_url_component)
-        .collect::<Vec<_>>()
-        .join("/");
-    format!("{OPENROUTER_MODEL_URL}/{encoded}/endpoints")
+fn append_lmstudio_models(
+    models: &mut Vec<ModelInfo>,
+    raw_models: &[Value],
+    catalog: Option<&OpenRouterCatalog>,
+    custom_ids: &[String],
+) {
+    for raw in raw_models {
+        let Some(local_id) = raw
+            .get("id")
+            .or_else(|| raw.get("model"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        let id = format!("lmstudio/{local_id}");
+        if models.iter().any(|model| model.id == id) {
+            continue;
+        }
+        models.push(lmstudio_model_info(
+            &id,
+            Some(raw),
+            catalog.and_then(|catalog| catalog.model(local_id)),
+            custom_ids.iter().any(|custom| custom == &id),
+        ));
+    }
 }
 
-fn model_info(
-    id: &str,
-    raw: Option<&Value>,
-    endpoint: Option<&EndpointMetadata>,
-    recommended: bool,
-    custom: bool,
-) -> ModelInfo {
+fn model_info(id: &str, raw: Option<&Value>, recommended: bool, custom: bool) -> ModelInfo {
     let display_name = raw
         .and_then(|model| model.get("name"))
         .and_then(Value::as_str)
@@ -283,6 +566,7 @@ fn model_info(
     ModelInfo {
         id: id.to_string(),
         display_name,
+        provider_id: fallback_provider_id(id).to_string(),
         provider,
         source: if custom { "custom" } else { "recommended" },
         recommended,
@@ -293,41 +577,28 @@ fn model_info(
             .and_then(|model| model.get("canonical_slug"))
             .and_then(Value::as_str)
             .map(ToString::to_string),
-        context_length: endpoint
-            .and_then(|metadata| metadata.context_length)
-            .or_else(|| {
-                raw.and_then(|model| model.get("context_length"))
-                    .and_then(Value::as_u64)
-            }),
-        max_output_tokens: endpoint
-            .and_then(|metadata| metadata.max_output_tokens)
-            .or_else(|| {
-                raw.and_then(|model| model.get("top_provider"))
-                    .and_then(|provider| provider.get("max_completion_tokens"))
-                    .and_then(Value::as_u64)
-            }),
-        input_cost_per_million: endpoint
-            .and_then(|metadata| metadata.input_cost_per_million)
-            .or_else(|| {
-                raw.and_then(|model| model.get("pricing"))
-                    .and_then(|pricing| pricing.get("prompt"))
-                    .and_then(price_per_million)
-            }),
-        output_cost_per_million: endpoint
-            .and_then(|metadata| metadata.output_cost_per_million)
-            .or_else(|| {
-                raw.and_then(|model| model.get("pricing"))
-                    .and_then(|pricing| pricing.get("completion"))
-                    .and_then(price_per_million)
-            }),
-        tokens_per_second: endpoint
-            .and_then(|metadata| metadata.tokens_per_second)
-            .or_else(|| {
-                raw.and_then(|model| model.get("top_provider"))
-                    .and_then(|provider| provider.get("throughput"))
-                    .or_else(|| raw.and_then(|model| model.get("throughput")))
-                    .and_then(Value::as_f64)
-            }),
+        context_length: raw
+            .and_then(|model| model.get("context_length"))
+            .and_then(Value::as_u64),
+        max_output_tokens: raw
+            .and_then(|model| model.get("top_provider"))
+            .and_then(|provider| provider.get("max_completion_tokens"))
+            .and_then(Value::as_u64),
+        input_cost_per_million: raw
+            .and_then(|model| model.get("pricing"))
+            .and_then(|pricing| pricing.get("prompt"))
+            .and_then(price_per_million),
+        output_cost_per_million: raw
+            .and_then(|model| model.get("pricing"))
+            .and_then(|pricing| pricing.get("completion"))
+            .and_then(price_per_million),
+        cache_read_cost_per_million: None,
+        cache_write_cost_per_million: None,
+        tokens_per_second: raw
+            .and_then(|model| model.get("top_provider"))
+            .and_then(|provider| provider.get("throughput"))
+            .or_else(|| raw.and_then(|model| model.get("throughput")))
+            .and_then(Value::as_f64),
         modalities,
         supports_tools: supported_parameters
             .iter()
@@ -342,6 +613,103 @@ fn model_info(
             .and_then(Value::as_str)
             .map(|description| description.trim().to_string()),
     }
+}
+
+fn ollama_model_info(id: &str, raw: Option<&Value>, custom: bool, verified: bool) -> ModelInfo {
+    let local_id = providers::ollama_model_id(id).unwrap_or(id);
+    let capabilities = string_array(raw.and_then(|model| model.get("capabilities")));
+    let mut modalities = vec!["in:text".to_string(), "out:text".to_string()];
+    if capabilities.iter().any(|capability| capability == "vision") {
+        modalities.push("in:image".to_string());
+    }
+    ModelInfo {
+        id: id.to_string(),
+        display_name: fallback_display_name(local_id),
+        provider_id: ProviderId::OLLAMA.to_string(),
+        provider: "Ollama".to_string(),
+        source: if custom { "custom" } else { "local" },
+        recommended: false,
+        custom,
+        verified,
+        latest_alias: false,
+        canonical_slug: raw
+            .and_then(|model| model.get("name").or_else(|| model.get("model")))
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        context_length: raw
+            .and_then(|model| model.get("details"))
+            .and_then(|details| details.get("context_length"))
+            .and_then(Value::as_u64),
+        max_output_tokens: None,
+        input_cost_per_million: Some(0.0),
+        output_cost_per_million: Some(0.0),
+        cache_read_cost_per_million: Some(0.0),
+        cache_write_cost_per_million: Some(0.0),
+        tokens_per_second: None,
+        modalities,
+        supports_tools: capabilities.iter().any(|capability| capability == "tools"),
+        supports_reasoning: false,
+        supported_reasoning_efforts: Vec::new(),
+        description: raw.and_then(ollama_description),
+    }
+}
+
+fn lmstudio_model_info(
+    id: &str,
+    raw: Option<&Value>,
+    catalog_model: Option<&OpenRouterCatalogModel>,
+    custom: bool,
+) -> ModelInfo {
+    let local_id = providers::lmstudio_model_id(id).unwrap_or(id);
+    if let Some(catalog_model) = catalog_model {
+        let mut model = openrouter_catalog_model_info(catalog_model, false, custom);
+        model.id = id.to_string();
+        model.provider_id = ProviderId::LMSTUDIO.to_string();
+        model.provider = "LM Studio".to_string();
+        model.source = "local";
+        model.verified = true;
+        model.canonical_slug = Some(local_id.to_string());
+        return model;
+    }
+
+    ModelInfo {
+        id: id.to_string(),
+        display_name: raw
+            .and_then(|model| model.get("id"))
+            .and_then(Value::as_str)
+            .map(fallback_display_name)
+            .unwrap_or_else(|| fallback_display_name(local_id)),
+        provider_id: ProviderId::LMSTUDIO.to_string(),
+        provider: "LM Studio".to_string(),
+        source: if custom { "custom" } else { "local" },
+        recommended: false,
+        custom,
+        verified: true,
+        latest_alias: false,
+        canonical_slug: Some(local_id.to_string()),
+        context_length: None,
+        max_output_tokens: None,
+        input_cost_per_million: Some(0.0),
+        output_cost_per_million: Some(0.0),
+        cache_read_cost_per_million: Some(0.0),
+        cache_write_cost_per_million: Some(0.0),
+        tokens_per_second: None,
+        modalities: vec!["in:text".to_string(), "out:text".to_string()],
+        supports_tools: true,
+        supports_reasoning: false,
+        supported_reasoning_efforts: Vec::new(),
+        description: Some("Loaded from the local LM Studio server.".to_string()),
+    }
+}
+
+fn ollama_description(model: &Value) -> Option<String> {
+    let details = model.get("details")?;
+    let size = details.get("parameter_size").and_then(Value::as_str)?;
+    let quant = details.get("quantization_level").and_then(Value::as_str);
+    Some(match quant {
+        Some(quant) => format!("{size} local model, {quant}."),
+        None => format!("{size} local model."),
+    })
 }
 
 pub(crate) fn model_supports_text_chat(model: &Value) -> bool {
@@ -416,6 +784,22 @@ fn fallback_provider(id: &str) -> String {
     }
 }
 
+fn fallback_provider_id(id: &str) -> &'static str {
+    if id.starts_with("ollama/") {
+        ProviderId::OLLAMA
+    } else if id.starts_with("ollama-cloud/") {
+        ProviderId::OLLAMA_CLOUD
+    } else if id.starts_with("lmstudio/") {
+        ProviderId::LMSTUDIO
+    } else if id.starts_with("deepseek/") {
+        ProviderId::DEEPSEEK
+    } else if id.starts_with("zai/") {
+        ProviderId::ZAI
+    } else {
+        ProviderId::OPENROUTER
+    }
+}
+
 fn price_per_million(value: &Value) -> Option<f64> {
     let price = value
         .as_str()
@@ -425,54 +809,6 @@ fn price_per_million(value: &Value) -> Option<f64> {
         return None;
     }
     Some(price * 1_000_000.0)
-}
-
-fn throughput_tokens_per_second(value: Option<&Value>) -> Option<f64> {
-    let value = value?;
-    if let Some(object) = value.as_object() {
-        for key in ["p50", "p75", "p90", "p99"] {
-            if let Some(parsed) = number_value(object.get(key)) {
-                return Some(parsed);
-            }
-        }
-        return None;
-    }
-    number_value(Some(value))
-}
-
-fn average_top_throughput(endpoints: &[&Value]) -> Option<f64> {
-    let mut values = endpoints
-        .iter()
-        .filter_map(|endpoint| throughput_tokens_per_second(endpoint.get("throughput_last_30m")))
-        .collect::<Vec<_>>();
-    values.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    values.truncate(3);
-    if values.is_empty() {
-        return None;
-    }
-    let total = values.iter().sum::<f64>();
-    Some(((total / values.len() as f64) * 10.0).round() / 10.0)
-}
-
-fn number_value(value: Option<&Value>) -> Option<f64> {
-    let value = value?;
-    value
-        .as_f64()
-        .or_else(|| value.as_str().and_then(|raw| raw.parse::<f64>().ok()))
-        .filter(|number| number.is_finite())
-}
-
-fn encode_url_component(value: &str) -> String {
-    let mut encoded = String::new();
-    for byte in value.bytes() {
-        let keep = byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~');
-        if keep {
-            encoded.push(byte as char);
-        } else {
-            encoded.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    encoded
 }
 
 fn string_array(value: Option<&Value>) -> Vec<String> {
