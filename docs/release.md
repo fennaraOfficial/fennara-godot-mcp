@@ -164,7 +164,7 @@ manifest whenever the release publishes one. The manifest records:
 - the shared addon asset with SHA-256
 - platform-specific shared runtime assets, currently Linux CEF
 
-The 0.3.1 manifest uses `minimum_cli_version: 0.3.1` by default because this
+The 0.3.2 manifest uses `minimum_cli_version: 0.3.2` by default because this
 release includes CLI update/install behavior that should travel with the
 packages. Future normal package layout or asset name changes should be handled
 by manifest data, not by changing the outer CLI. Raise `minimum_cli_version`

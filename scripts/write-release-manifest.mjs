@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_MINIMUM_CLI_VERSION = "0.3.1";
+const DEFAULT_MINIMUM_CLI_VERSION = "0.3.2";
 const RELEASE_PLATFORMS = [
   { key: "windows-x86_64", platform: "windows", arch: "x86_64" },
   { key: "linux-x86_64", platform: "linux", arch: "x86_64" },
@@ -213,7 +213,7 @@ function printHelp() {
 Write the release manifest consumed by fennara install/update.
 
 Usage:
-  node scripts/write-release-manifest.mjs --assets-dir release-assets --out release-assets/fennara-release-manifest-v0.3.1.json
+  node scripts/write-release-manifest.mjs --assets-dir release-assets --out release-assets/fennara-release-manifest-v0.3.2.json
   node scripts/write-release-manifest.mjs --assets-dir release-assets --linux-cef-manifest generated-linux-cef-manifest/linux-cef.json
 
 Options:
