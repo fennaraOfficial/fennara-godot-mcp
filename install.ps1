@@ -27,6 +27,34 @@ Options:
 $repo = "fennaraOfficial/fennara-godot-ai"
 $platform = "windows"
 $arch = "x86_64"
+$networkTimeoutSeconds = 120
+
+function Format-Bytes([long] $Bytes) {
+  if ($Bytes -ge 1MB) {
+    return "{0:n1} MB" -f ($Bytes / 1MB)
+  }
+  if ($Bytes -ge 1KB) {
+    return "{0:n1} KB" -f ($Bytes / 1KB)
+  }
+  return "$Bytes B"
+}
+
+function Show-MissingRuntimeHelp {
+  Write-Host ""
+  Write-Host "Your Fennara CLI installed, but Windows cannot start it."
+  Write-Host "The exit code -1073741515 means a required Windows DLL is missing."
+  Write-Host "Please install Microsoft Visual C++ Redistributable 2015-2022 x64, then reopen PowerShell and run:"
+  Write-Host ""
+  Write-Host "  fennara --version"
+  Write-Host "  fennara doctor"
+  Write-Host "  fennara install"
+  Write-Host ""
+  Write-Host "Download:"
+  Write-Host "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+  Write-Host ""
+  Write-Host "Expected first line:"
+  Write-Host "  fennara <version>"
+}
 
 if (-not $InstallDir -and -not $env:LOCALAPPDATA) {
   throw "LOCALAPPDATA is not set."
@@ -39,7 +67,9 @@ $releaseApi = if ($Version -eq "latest") {
 }
 
 Write-Host "Fetching Fennara release metadata..."
-$release = Invoke-RestMethod -Uri $releaseApi -Headers @{ "User-Agent" = "fennara-install" }
+Write-Host "release api: $releaseApi"
+$release = Invoke-RestMethod -Uri $releaseApi -Headers @{ "User-Agent" = "fennara-install" } -TimeoutSec $networkTimeoutSeconds
+Write-Host "release: $($release.tag_name)"
 $asset = $release.assets |
   Where-Object { $_.name -like "fennara-cli-$platform-$arch-v*.zip" } |
   Select-Object -First 1
@@ -58,7 +88,11 @@ New-Item -ItemType Directory -Force -Path $tempDir, $extractDir, $binDir | Out-N
 
 try {
   Write-Host "Downloading $($asset.name)..."
-  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers @{ "User-Agent" = "fennara-install" }
+  Write-Host "from: $($asset.browser_download_url)"
+  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers @{ "User-Agent" = "fennara-install" } -TimeoutSec $networkTimeoutSeconds
+  $download = Get-Item -LiteralPath $zipPath
+  Write-Host "downloaded: $($asset.name) ($(Format-Bytes $download.Length))"
+  Write-Host "Extracting Fennara CLI..."
   Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
 
   $source = Join-Path $extractDir "bin\fennara.exe"
@@ -67,6 +101,7 @@ try {
   }
 
   $target = Join-Path $binDir "fennara.exe"
+  Write-Host "Installing Fennara CLI to $target..."
   Copy-Item -LiteralPath $source -Destination $target -Force
 
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -91,7 +126,19 @@ try {
   }
 
   Write-Host "Verifying Fennara CLI..."
-  & $target --version
+  $versionOutput = & $target --version 2>&1
+  $verifyExitCode = $LASTEXITCODE
+  if ($verifyExitCode -ne 0) {
+    if (($verifyExitCode -eq -1073741515) -or ("$verifyExitCode" -eq "3221225781")) {
+      Show-MissingRuntimeHelp
+    }
+    if ($versionOutput) {
+      Write-Host "verification output:"
+      $versionOutput | ForEach-Object { Write-Host "  $_" }
+    }
+    throw "Fennara CLI verification failed with exit code $verifyExitCode."
+  }
+  $versionOutput | ForEach-Object { Write-Host $_ }
 
   if (Get-Command fennara -ErrorAction SilentlyContinue) {
     Write-Host "fennara command: available"

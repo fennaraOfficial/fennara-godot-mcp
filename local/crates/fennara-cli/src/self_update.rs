@@ -38,6 +38,7 @@ pub fn start(version_request: &str, continuation_args: Vec<String>) -> Result<St
     let layout = AppLayout::detect()?;
     layout.ensure_base_dirs()?;
 
+    println!("self-update: resolving release {version_request}");
     let release = release_client::fetch_release(version_request)?;
     let Some(manifest_asset) = release.manifest_asset() else {
         return Ok(StartResult::Skipped(format!(
@@ -48,6 +49,7 @@ pub fn start(version_request: &str, continuation_args: Vec<String>) -> Result<St
     let manifest_bytes = release_client::download_bytes(&manifest_asset.url, &manifest_asset.name)?;
     let manifest = ReleaseManifest::parse(&manifest_bytes)?;
     let selection = manifest.select_cli_for_current_platform()?;
+    println!("self-update: selected CLI {}", selection.version);
 
     match compare_versions(VERSION, &selection.version) {
         Some(Ordering::Less) => {}
@@ -65,6 +67,7 @@ pub fn start(version_request: &str, continuation_args: Vec<String>) -> Result<St
         .ok_or_else(|| format!("release {} is missing {}", release.tag, selection.cli.name))?;
     let target = installed_cli_path(&layout)?;
     let stage_dir = create_stage_dir(&layout)?;
+    println!("self-update: staging CLI in {}", display_path(&stage_dir));
     let extract_dir = stage_dir.join("extract");
     release_client::download_zip_to_dir(
         &DownloadAsset {
@@ -83,6 +86,7 @@ pub fn start(version_request: &str, continuation_args: Vec<String>) -> Result<St
         ));
     }
     make_executable(&staged_cli)?;
+    println!("self-update: verifying staged CLI");
     validate_cli_version(&staged_cli, &selection.version)?;
 
     println!("Updating Fennara CLI");
@@ -98,6 +102,7 @@ pub fn start(version_request: &str, continuation_args: Vec<String>) -> Result<St
         .arg("--target")
         .arg(&target);
     if !continuation_args.is_empty() {
+        println!("continuation: fennara {}", continuation_args.join(" "));
         command.arg("--").args(continuation_args);
     }
     command
@@ -110,6 +115,7 @@ pub fn start(version_request: &str, continuation_args: Vec<String>) -> Result<St
 
 pub fn complete(args: Vec<String>) -> Result<(), String> {
     let options = CompleteOptions::parse(args)?;
+    println!("self-update: replacing {}", display_path(&options.target));
     replace_with_retry(&options.source, &options.target)?;
     let installed_version = cli_version_output(&options.target)?;
 
@@ -121,11 +127,16 @@ pub fn complete(args: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
 
+    println!(
+        "continuation: fennara {}",
+        options.continuation_args.join(" ")
+    );
     let status = Command::new(&options.target)
         .args(&options.continuation_args)
         .status()
         .map_err(|err| format!("failed to continue update with new Fennara CLI: {err}"))?;
     if status.success() {
+        println!("continuation: completed");
         Ok(())
     } else {
         Err(format!("continued update command exited with {status}"))
@@ -297,12 +308,27 @@ fn cli_version_output(path: &Path) -> Result<String, String> {
         .map_err(|err| format!("failed to run {} --version: {err}", display_path(path)))?;
     if !output.status.success() {
         return Err(format!(
-            "{} --version exited with {}",
+            "{} --version exited with {}{}",
             display_path(path),
-            output.status
+            output.status,
+            cli_startup_hint(output.status.code())
         ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[cfg(windows)]
+fn cli_startup_hint(exit_code: Option<i32>) -> &'static str {
+    if exit_code == Some(-1073741515) {
+        "\nWindows could not start Fennara because a required DLL is missing. Install Microsoft Visual C++ Redistributable 2015-2022 x64, then open a new PowerShell and run `fennara --version`, `fennara doctor`, and `fennara install`.\nDownload: https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    } else {
+        ""
+    }
+}
+
+#[cfg(not(windows))]
+fn cli_startup_hint(_exit_code: Option<i32>) -> &'static str {
+    ""
 }
 
 #[cfg(unix)]

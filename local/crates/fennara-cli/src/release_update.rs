@@ -10,6 +10,9 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     let options = UpdateOptions::parse(args)?;
     let project_dir = project_install::resolve_project_dir(options.project_dir.clone())?;
     project_install::ensure_godot_project(&project_dir)?;
+    println!("Updating Fennara");
+    println!("project: {}", display_path(&project_dir));
+    println!("requested version: {}", options.version);
 
     if !project_install::has_fennara_addon(&project_dir) {
         return Err(format!(
@@ -19,16 +22,21 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     }
 
     if !options.no_self_update {
+        println!("self-update: checking installed CLI");
         match self_update::start(&options.version, options.continuation_args())? {
             StartResult::Started => return Ok(()),
-            StartResult::AlreadyCurrent => {}
+            StartResult::AlreadyCurrent => println!("self-update: CLI is current"),
             StartResult::Skipped(reason) => println!("warning: {reason}"),
         }
+    } else {
+        println!("self-update: skipped by --no-self-update");
     }
 
+    println!("package: resolving update package");
     let package = release_package::ensure_package(&options.version)?;
     let project_version = project_install::project_addon_version(&project_dir);
     if project_version.as_deref() == Some(package.version.as_str()) {
+        println!("guidance: refreshing AGENTS.md and .fennara/ai/guidelines.md");
         project_guidance::write(&project_dir)?;
         println!("Fennara is already up to date.");
         println!("version: {}", package.version);
@@ -38,7 +46,9 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
         return Ok(());
     }
 
+    println!("addon: copying from {}", display_path(&package.addon_dir));
     project_install::install_addon(&project_dir, &package.addon_dir)?;
+    println!("guidance: refreshing AGENTS.md and .fennara/ai/guidelines.md");
     project_guidance::write(&project_dir)?;
     println!("Updated Fennara");
     println!(

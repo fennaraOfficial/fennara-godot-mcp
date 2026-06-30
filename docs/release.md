@@ -292,6 +292,16 @@ When release packaging builds the CLI, those templates are compiled into the bin
 
 Use `promote_latest: false` only when publishing a version that should not become the default user install.
 
+Installers and release downloads should print release metadata, asset download,
+extract, install, and verification steps. Network fetches should use bounded
+timeouts so GitHub/CDN stalls fail with a diagnostic instead of looking frozen.
+On Windows, `install.ps1` must check the CLI verification exit code before
+printing success. Exit code `-1073741515` (`0xC0000135`) means the CLI executable
+was written but Windows could not start it because a required DLL is missing;
+tell the user to install Microsoft Visual C++ Redistributable 2015-2022 x64 and
+then rerun `fennara --version`, `fennara doctor`, and `fennara install`.
+Download URL: `https://aka.ms/vs/17/release/vc_redist.x64.exe`.
+
 ## Smoke Test After Release
 
 On Windows:

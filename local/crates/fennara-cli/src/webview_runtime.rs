@@ -1,9 +1,10 @@
 use crate::app_layout::{AppLayout, arch_name, display_path, platform_name};
+use crate::release_client;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zip::ZipArchive;
@@ -313,16 +314,9 @@ fn download_and_install_zip(
     target_dir: &Path,
     manifest: &Value,
 ) -> Result<(), String> {
-    let response = ureq::get(url)
-        .set("User-Agent", "fennara-cli")
-        .call()
-        .map_err(|err| format!("failed to download Linux CEF runtime {url}: {err}"))?;
-    let mut bytes = Vec::new();
-    response
-        .into_reader()
-        .read_to_end(&mut bytes)
-        .map_err(|err| format!("failed to read Linux CEF runtime download: {err}"))?;
+    let bytes = release_client::download_bytes(url, "Linux CEF runtime")?;
 
+    println!("webview runtime: verifying Linux CEF runtime");
     let actual_sha256 = format!("{:x}", Sha256::digest(&bytes));
     if !actual_sha256.eq_ignore_ascii_case(expected_sha256) {
         return Err(format!(
@@ -333,6 +327,10 @@ fn download_and_install_zip(
     let extract_dir = temp_dir.join("extract");
     fs::create_dir_all(&extract_dir)
         .map_err(|err| format!("failed to create {}: {err}", display_path(&extract_dir)))?;
+    println!(
+        "webview runtime: extracting Linux CEF runtime to {}",
+        display_path(&extract_dir)
+    );
     let mut archive = ZipArchive::new(Cursor::new(bytes))
         .map_err(|err| format!("failed to open Linux CEF runtime zip: {err}"))?;
     archive.extract(&extract_dir).map_err(|err| {
@@ -351,6 +349,10 @@ fn download_and_install_zip(
     fs::create_dir_all(platform_dir)
         .map_err(|err| format!("failed to create {}: {err}", display_path(platform_dir)))?;
     let staging_dir = create_unique_sibling_dir(platform_dir, ".install-cef")?;
+    println!(
+        "webview runtime: staging Linux CEF runtime in {}",
+        display_path(&staging_dir)
+    );
 
     let install_result = (|| {
         copy_dir(&extract_dir, &staging_dir)?;

@@ -5,6 +5,8 @@ REPO="fennaraOfficial/fennara-godot-ai"
 VERSION="latest"
 INSTALL_DIR="${FENNARA_INSTALL_DIR:-}"
 MODIFY_PATH=1
+CURL_CONNECT_TIMEOUT=20
+CURL_MAX_TIME=120
 
 usage() {
   cat <<'EOF'
@@ -77,6 +79,32 @@ need() {
 need curl
 need unzip
 
+curl_quiet() {
+  url="$1"
+  output="$2"
+  curl -fsSL \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+    --max-time "$CURL_MAX_TIME" \
+    --retry 2 \
+    --retry-delay 1 \
+    -H "User-Agent: fennara-install" \
+    "$url" \
+    -o "$output"
+}
+
+curl_download() {
+  url="$1"
+  output="$2"
+  curl -fL \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+    --max-time "$CURL_MAX_TIME" \
+    --retry 2 \
+    --retry-delay 1 \
+    -H "User-Agent: fennara-install" \
+    "$url" \
+    -o "$output"
+}
+
 os="$(uname -s)"
 case "$os" in
   Darwin) platform="macos" ;;
@@ -115,8 +143,16 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Fetching Fennara release metadata..."
+echo "release api: $release_api"
 release_json="$tmp_dir/release.json"
-curl -fsSL -H "User-Agent: fennara-install" "$release_api" -o "$release_json"
+curl_quiet "$release_api" "$release_json"
+release_tag="$(
+  sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "$release_json" |
+    head -n 1
+)"
+if [ -n "$release_tag" ]; then
+  echo "release: $release_tag"
+fi
 
 asset_url="$(
   sed -nE 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"([^"]*fennara-cli-'"$platform"'-'"$arch"'-v[^"]*\.zip)".*/\1/p' "$release_json" |
@@ -133,7 +169,11 @@ extract_dir="$tmp_dir/extract"
 mkdir -p "$extract_dir" "$bin_dir" "$link_dir"
 
 echo "Downloading $(basename "$asset_url")..."
-curl -fL -H "User-Agent: fennara-install" "$asset_url" -o "$zip_path"
+echo "from: $asset_url"
+curl_download "$asset_url" "$zip_path"
+zip_size="$(wc -c < "$zip_path" | tr -d ' ')"
+echo "downloaded: $(basename "$asset_url") ($zip_size bytes)"
+echo "Extracting Fennara CLI..."
 unzip -q "$zip_path" -d "$extract_dir"
 
 if [ ! -f "$extract_dir/bin/fennara" ]; then
@@ -146,7 +186,16 @@ chmod +x "$bin_dir/fennara"
 ln -sf "$bin_dir/fennara" "$link_dir/fennara"
 
 echo "Verifying Fennara CLI..."
-"$bin_dir/fennara" --version
+if version_output="$("$bin_dir/fennara" --version 2>&1)"; then
+  echo "$version_output"
+else
+  status="$?"
+  echo "error: Fennara CLI verification failed with exit code $status" >&2
+  if [ -n "$version_output" ]; then
+    echo "$version_output" >&2
+  fi
+  exit "$status"
+fi
 
 ensure_profile_path() {
   profile_path=""

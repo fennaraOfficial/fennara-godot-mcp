@@ -11,6 +11,8 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     let options = InstallOptions::parse(args)?;
     let project_dir = resolve_project_dir(options.project_dir)?;
     ensure_godot_project(&project_dir)?;
+    println!("Installing Fennara");
+    println!("project: {}", display_path(&project_dir));
 
     if project_addon_dir(&project_dir).exists() {
         return Err(format!(
@@ -20,15 +22,22 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     }
 
     let (version, source) = match options.source_dir {
-        Some(path) => ("local".to_string(), path),
+        Some(path) => {
+            println!("package: using local addon source {}", display_path(&path));
+            ("local".to_string(), path)
+        }
         None => {
+            println!("requested version: {}", options.version);
             let package = release_package::ensure_package(&options.version)?;
             (package.version, package.addon_dir)
         }
     };
+    println!("addon: copying from {}", display_path(&source));
     install_addon(&project_dir, &source)?;
+    println!("guidance: writing AGENTS.md and .fennara/ai/guidelines.md");
     project_guidance::write(&project_dir)?;
     if options.csharp {
+        println!("csharp: installing language server support");
         csharp_support::install()?;
     }
 

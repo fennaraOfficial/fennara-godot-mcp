@@ -5,9 +5,13 @@ use std::env;
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use zip::ZipArchive;
 
 const REPO: &str = "fennaraOfficial/fennara-godot-ai";
+const HTTP_CONNECT_TIMEOUT_SECS: u64 = 20;
+const HTTP_READ_TIMEOUT_SECS: u64 = 120;
+const HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Clone)]
 pub struct ReleaseAsset {
@@ -74,22 +78,26 @@ pub fn fetch_release(version: &str) -> Result<Release, String> {
         format!("v{version}")
     };
     let url = format!("https://api.github.com/repos/{REPO}/releases/tags/{tag}");
-    let response = ureq::get(&url)
+    println!("release: fetching metadata from {url}");
+    let response = http_agent()
+        .get(&url)
         .set("User-Agent", "fennara-cli")
         .call()
-        .map_err(|err| format!("failed to fetch release metadata: {err}"))?;
+        .map_err(|err| format!("failed to fetch release metadata from {url}: {err}"))?;
     let value: Value = response
         .into_json()
         .map_err(|err| format!("failed to parse release metadata: {err}"))?;
 
-    Ok(Release {
+    let release = Release {
         tag: value
             .get("tag_name")
             .and_then(Value::as_str)
             .unwrap_or(&tag)
             .to_string(),
         assets: value.get("assets").cloned().unwrap_or(Value::Null),
-    })
+    };
+    println!("release: {}", release.tag);
+    Ok(release)
 }
 
 pub fn download_zip_to_dir(asset: &DownloadAsset<'_>, target: &Path) -> Result<(), String> {
@@ -104,26 +112,38 @@ pub fn download_zip_to_dir(asset: &DownloadAsset<'_>, target: &Path) -> Result<(
                 asset.label
             ));
         }
+        println!("sha256: verified {}", asset.label);
     }
 
+    println!("extracting: {} to {}", asset.label, display_path(target));
     let cursor = Cursor::new(bytes);
     let mut archive =
         ZipArchive::new(cursor).map_err(|err| format!("failed to open downloaded zip: {err}"))?;
     archive
         .extract(target)
-        .map_err(|err| format!("failed to extract zip into {}: {err}", display_path(target)))
+        .map_err(|err| format!("failed to extract zip into {}: {err}", display_path(target)))?;
+    println!("extracted: {}", asset.label);
+    Ok(())
 }
 
 pub fn download_bytes(url: &str, label: &str) -> Result<Vec<u8>, String> {
-    let response = ureq::get(url)
+    println!("download: {label}");
+    println!("from: {url}");
+    let response = http_agent()
+        .get(url)
         .set("User-Agent", "fennara-cli")
         .call()
-        .map_err(|err| format!("failed to download {label} from {url}: {err}"))?;
+        .map_err(|err| {
+            format!(
+                "failed to download {label} from {url} within connect/read timeouts ({HTTP_CONNECT_TIMEOUT_SECS}s/{HTTP_READ_TIMEOUT_SECS}s): {err}"
+            )
+        })?;
     let mut bytes = Vec::new();
     response
         .into_reader()
         .read_to_end(&mut bytes)
         .map_err(|err| format!("failed to read download for {label}: {err}"))?;
+    println!("downloaded: {label} ({})", format_bytes(bytes.len()));
     Ok(bytes)
 }
 
@@ -149,5 +169,27 @@ fn version_from_asset_name(name: &str) -> Option<String> {
         Some(version.to_string())
     } else {
         None
+    }
+}
+
+fn http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(HTTP_CONNECT_TIMEOUT_SECS))
+        .timeout_read(Duration::from_secs(HTTP_READ_TIMEOUT_SECS))
+        .timeout_write(Duration::from_secs(HTTP_WRITE_TIMEOUT_SECS))
+        .build()
+}
+
+fn format_bytes(bytes: usize) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = 1024.0 * 1024.0;
+
+    let bytes = bytes as f64;
+    if bytes >= MB {
+        format!("{:.1} MB", bytes / MB)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes / KB)
+    } else {
+        format!("{bytes:.0} B")
     }
 }

@@ -14,8 +14,10 @@ pub fn ensure_package(version_request: &str) -> Result<InstalledPackage, String>
     let layout = AppLayout::detect()?;
     layout.ensure_base_dirs()?;
 
+    println!("package: resolving release {version_request}");
     let release = release_client::fetch_release(version_request)?;
     if let Some(manifest_asset) = release.manifest_asset() {
+        println!("manifest: {}", manifest_asset.name);
         let bytes = release_client::download_bytes(&manifest_asset.url, &manifest_asset.name)?;
         let manifest = ReleaseManifest::parse(&bytes)?;
         manifest.validate_for_install()?;
@@ -31,6 +33,7 @@ fn ensure_manifest_package(
     manifest: &ReleaseManifest,
 ) -> Result<InstalledPackage, String> {
     let selection = manifest.select_for_current_platform()?;
+    println!("package: selected {}", selection.version);
     let local_asset = release
         .asset_by_name(&selection.local.name)
         .ok_or_else(|| {
@@ -78,6 +81,7 @@ fn ensure_legacy_package(
     layout: &AppLayout,
     release: &Release,
 ) -> Result<InstalledPackage, String> {
+    println!("package: using legacy release assets");
     let local_prefix = format!("fennara-local-{}-{}-v", platform_name(), arch_name());
     let addon_prefix = "fennara-addon-v".to_string();
     let local_asset = release
@@ -123,6 +127,10 @@ fn ensure_selected_package(
 ) -> Result<InstalledPackage, String> {
     if package_complete(layout, version) {
         write_manifest(layout, version)?;
+        println!(
+            "package: version {version} already installed at {}",
+            display_path(&layout.versions_dir.join(version))
+        );
         return Ok(InstalledPackage {
             version: version.to_string(),
             addon_dir: addon_dir(layout, version),
@@ -130,6 +138,7 @@ fn ensure_selected_package(
     }
 
     let temp_dir = release_client::create_temp_dir("fennara-package")?;
+    println!("package: staging downloads in {}", display_path(&temp_dir));
     let result = install_from_assets(layout, &temp_dir, version, local_asset, addon_asset);
     let _ = fs::remove_dir_all(&temp_dir);
     result
@@ -170,6 +179,7 @@ fn install_from_assets(
     release_client::download_zip_to_dir(&local_asset, &local_dir)?;
     release_client::download_zip_to_dir(&addon_asset, &addon_stage_dir)?;
 
+    println!("package: installing version {version}");
     let package_version = fs::read_to_string(local_dir.join("VERSION"))
         .map_err(|err| format!("downloaded local package is missing VERSION: {err}"))?
         .trim()
@@ -185,6 +195,7 @@ fn install_from_assets(
     fs::create_dir_all(&version_dir)
         .map_err(|err| format!("failed to create {}: {err}", display_path(&version_dir)))?;
 
+    println!("launchers: updating {}", display_path(&layout.bin_dir));
     copy_existing_launcher(
         &local_dir.join("bin").join(binary_name("fennara-mcp")),
         &layout.bin_dir.join(binary_name("fennara-mcp")),
@@ -193,6 +204,7 @@ fn install_from_assets(
         &local_dir.join("bin").join(binary_name("fennara-daemon")),
         &layout.bin_dir.join(binary_name("fennara-daemon")),
     )?;
+    println!("runtimes: installing to {}", display_path(&version_dir));
     copy_file(
         &local_dir
             .join("bin")
@@ -214,6 +226,10 @@ fn install_from_assets(
             )
         })?;
     }
+    println!(
+        "addon package: installing to {}",
+        display_path(&addon_target)
+    );
     copy_dir(&addon_stage_dir, &addon_target)?;
     write_manifest(layout, version)?;
 
@@ -224,6 +240,10 @@ fn install_from_assets(
 }
 
 fn write_manifest(layout: &AppLayout, version: &str) -> Result<(), String> {
+    println!(
+        "current manifest: writing {}",
+        display_path(&layout.current_manifest_path)
+    );
     let manifest = serde_json::json!({
         "version": version,
         "mcp_runtime": format!("versions/{version}/{}", binary_name("fennara-mcp-runtime")),
