@@ -488,14 +488,17 @@
     }
 
     function extractProjectFileReference(value) {
-      let text = String(value || "").trim();
-      try {
-        text = decodeURI(text);
-      } catch {
-        // Keep the original text if it is not URI encoded cleanly.
-      }
+      const text = String(value || "").trim();
       const match = text.match(/res:\/\/[^\s)\],;'"`<>]+/i);
-      return match ? match[0].replace(/[.,;!?]+$/, "") : "";
+      return match ? decodeProjectFileReference(match[0].replace(/[.,;!?]+$/, "")) : "";
+    }
+
+    function decodeProjectFileReference(reference) {
+      try {
+        return decodeURI(reference);
+      } catch {
+        return reference;
+      }
     }
 
     function projectFileReferenceHasLine(value) {
