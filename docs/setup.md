@@ -131,6 +131,11 @@ through the local daemon. Restart Godot after changing this display setting.
 Inside the dock, use `/provider` to connect or switch providers and `/model` to
 choose a model. See [Built-In Chat Providers](providers.md) and [Built-In Chat Slash Commands](slash-commands.md).
 
+To add focused code context to a built-in chat request, select code in Godot's
+script editor, open the script editor context menu, and choose **Add to Chat**.
+The selected script range is attached to the next chat message as removable code
+context.
+
 ## 3. Configure Your MCP App
 
 Claude Code and Claude Desktop:

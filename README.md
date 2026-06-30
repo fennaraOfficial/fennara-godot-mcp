@@ -165,6 +165,7 @@ The Fennara dock includes a native web chat surface inside Godot. It talks to th
 - Chat display can stay embedded in Godot, or use the system browser next time if you enable **Open chat in my system browser next time** in Chat Settings.
 - Use `/provider` to connect or switch providers and `/model` to choose a model in the dock.
 - Chat history is stored locally and scoped to the current project.
+- Select code in Godot's script editor, open the script editor context menu, and choose **Add to Chat** to attach that exact script range to the next built-in chat message.
 - Image attachments can be pasted or selected from the composer and sent as model context when the selected provider model supports vision. Ollama image input is not enabled yet.
 - The dock shows whether the current project is the MCP target for external MCP clients.
 

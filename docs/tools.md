@@ -78,6 +78,25 @@ handling around the same raw results, such as showing image previews from
 `read_file`, collapsing large output, or attaching screenshots/image context to
 the model request.
 
+### Selected Script Context
+
+The built-in chat can attach a selected script range from the Godot editor:
+
+1. Open a script in Godot's script editor.
+2. Select the code you want the model to see.
+3. Open the script editor context menu on that selection.
+4. Choose **Add to Chat**.
+
+The selected range appears in the chat composer as a removable code context
+chip. Click the chip to preview the attached code, or remove it before sending.
+When you send the next message, Fennara includes the selected `res://` path,
+1-based line range, and selected text as project context for that model request.
+
+This is a built-in chat convenience, not an MCP tool. It requires the local
+daemon connection and only appears when the current script editor has non-empty
+selected text. Fennara accepts up to 8 code context snippets per message and
+caps each snippet at 64,000 characters.
+
 This approval flow is currently for the built-in chat tool loop. External MCP
 clients continue to use their own permission model when deciding whether to call
 Fennara MCP tools.

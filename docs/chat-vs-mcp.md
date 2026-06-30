@@ -61,6 +61,11 @@ ollama/llama3.1:8b
 lmstudio/openai/gpt-oss-20b
 ```
 
+The built-in dock can also receive selected code from Godot's script editor.
+Select script text, open the script editor context menu, choose **Add to Chat**,
+then send your next chat message. The selected `res://` path, line range, and
+code are attached only to that built-in chat request.
+
 For provider setup details, see [Built-In Chat Providers](providers.md). For dock shortcuts, see [Built-In Chat Slash Commands](slash-commands.md).
 
 ## Shared Godot Target
