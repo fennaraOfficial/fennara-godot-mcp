@@ -20,9 +20,21 @@ namespace fennara {
 
 namespace {
 
+constexpr const char *kFennaraGuidelinesPath =
+    "res://addons/fennara/ai/guidelines.md";
+
+bool is_read_file_exception(const godot::String &path) {
+    return addon_access::normalize_res_path(path) ==
+           godot::String(kFennaraGuidelinesPath);
+}
+
 bool append_if_blocked(const godot::String &path,
-                       godot::Array &blocked) {
+                       godot::Array &blocked,
+                       bool allow_read_file_exceptions = false) {
     if (path.strip_edges().is_empty()) {
+        return false;
+    }
+    if (allow_read_file_exceptions && is_read_file_exception(path)) {
         return false;
     }
     godot::Dictionary block;
@@ -35,7 +47,8 @@ bool append_if_blocked(const godot::String &path,
 
 void append_array_blocks(const godot::Dictionary &args,
                          const godot::String &key,
-                         godot::Array &blocked) {
+                         godot::Array &blocked,
+                         bool allow_read_file_exceptions = false) {
     godot::Variant value = args.get(key, godot::Variant());
     if (value.get_type() != godot::Variant::ARRAY) {
         return;
@@ -43,7 +56,7 @@ void append_array_blocks(const godot::Dictionary &args,
     godot::Array paths = value;
     for (int i = 0; i < paths.size(); i++) {
         if (paths[i].get_type() == godot::Variant::STRING) {
-            append_if_blocked(paths[i], blocked);
+            append_if_blocked(paths[i], blocked, allow_read_file_exceptions);
         }
     }
 }
@@ -54,7 +67,7 @@ godot::Dictionary blocked_tool_result(const godot::String &name,
     if (name == "script_diagnostics") {
         append_array_blocks(args, "file_paths", blocked);
     } else if (name == "read_file") {
-        append_array_blocks(args, "file_paths", blocked);
+        append_array_blocks(args, "file_paths", blocked, true);
     } else if (name == "write_or_update_file") {
         append_if_blocked(args.get("file_path", ""), blocked);
         append_if_blocked(args.get("attach_to_scene", ""), blocked);
@@ -105,8 +118,23 @@ bool FennaraExecutor::has_tool(const godot::String &name) {
            name == "scrape_editor";
 }
 
-bool FennaraExecutor::_is_thread_safe(const godot::String &name) {
-    return name == "write_or_update_file";
+bool FennaraExecutor::_is_thread_safe(const godot::String &name,
+                                      const godot::Dictionary &args) {
+    if (name != "write_or_update_file") {
+        return false;
+    }
+
+    godot::String attach_to_scene =
+        godot::String(args.get("attach_to_scene", "")).strip_edges();
+    godot::String attach_to_node =
+        godot::String(args.get("attach_to_node", "")).strip_edges();
+    if (!attach_to_scene.is_empty() || !attach_to_node.is_empty()) {
+        return false;
+    }
+
+    godot::String file_path =
+        godot::String(args.get("file_path", "")).strip_edges().to_lower();
+    return !file_path.ends_with(".gdshader");
 }
 
 godot::Dictionary FennaraExecutor::execute_tool(const godot::String &name,

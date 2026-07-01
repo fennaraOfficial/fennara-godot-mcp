@@ -77,7 +77,7 @@ AI coding agents:
 
 ```text
 AGENTS.md
-.fennara/ai/guidelines.md
+addons/fennara/ai/guidelines.md
 ```
 
 If `AGENTS.md` already exists, Fennara only updates the generated block between its own markers.

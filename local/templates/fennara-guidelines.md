@@ -327,7 +327,9 @@ Use `script_diagnostics` when:
 
 Targeted `script_diagnostics` calls support `.gd`, `.cs`, and `.gdshader` files. `scan_project: true` scans `.gd`, `.cs`, and `.gdshader` files under `res://`.
 
-For requested `.gd` and `.cs` files, `script_diagnostics` also loads and instantiates project `.tscn` scenes in memory with Godot logger capture enabled. Script-related scene-load errors are attached to the matching script file with `source: "scene_load"` and `scene_path`, so the result says which scene triggered the script error. This is an in-memory diagnostic pass, not opening the editor UI or running the game scene.
+For targeted `.gd` and `.cs` files, `script_diagnostics` also loads and instantiates project `.tscn` scenes in memory on the Godot main thread with Godot logger capture enabled. Script-related scene-load errors are attached to the matching script file with `source: "scene_load"` and `scene_path`, so the result says which scene triggered the script error. This is an in-memory diagnostic pass, not opening the editor UI or running the game scene.
+
+For `scan_project: true`, `script_diagnostics` skips scene instantiation and reports `scene_load_skipped: true`. This project-wide mode can miss errors that only occur when scripts are attached to or loaded through scenes, such as missing unique-node references, invalid `NodePath` wiring, broken exported scene/resource assignments, or script initialization side effects.
 
 If `write_or_update_file` edited a `.gd`, `.cs`, or `.gdshader` file, it already ran diagnostics. For `.gdshader`, it also attempted to reserialize referencing `.tscn` and `.tres` owners. You may still run `script_diagnostics` separately for broader checks or if the task requires extra confidence.
 

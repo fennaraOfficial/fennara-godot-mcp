@@ -201,7 +201,7 @@ godot::Array FennaraExecutor::execute_tool_calls(const godot::Array &tool_calls)
         godot::String name = tool_name_from_call(tc);
         godot::Dictionary args = tool_args_from_call(tc);
 
-        if (_is_thread_safe(name)) {
+        if (_is_thread_safe(name, args)) {
             threaded.push_back({i, name, args, {}});
         } else {
             main_only.push_back({i, name, args, {}});

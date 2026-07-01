@@ -16,15 +16,28 @@
 #include <godot_cpp/classes/packed_scene.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
+#include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/scene_tree.hpp>
+#include <godot_cpp/classes/scene_tree_timer.hpp>
 #include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+
+#include <mutex>
 
 namespace fennara {
 
 namespace {
 
 constexpr int kMaxBatchFiles = 5;
+constexpr int kSceneLoadScenesPerTick = 2;
+constexpr uint64_t kSceneLoadBudgetMs = 8;
 constexpr const char *kResultVersion = "script-diagnostics-result-v1";
+
+std::mutex &diagnostic_logger_capture_mutex() {
+    static std::mutex *mutex = new std::mutex;
+    return *mutex;
+}
 
 bool is_script_path(const godot::String &path) {
     return path.ends_with(".gd") || path.ends_with(".cs");
@@ -304,8 +317,11 @@ godot::Dictionary script_origin_from_capture(const godot::Dictionary &entry) {
     return origin;
 }
 
-godot::Dictionary collect_scene_load_script_diagnostics(
-    const godot::Array &valid_requests, godot::Dictionary &scene_summary) {
+godot::Dictionary diagnose_shader_file(const godot::String &resolved_path,
+                                       const godot::String &display_path);
+
+godot::Dictionary requested_paths_from_valid_requests(
+    const godot::Array &valid_requests) {
     godot::Dictionary requested_paths;
     for (int i = 0; i < valid_requests.size(); i++) {
         godot::Dictionary request = valid_requests[i];
@@ -316,86 +332,197 @@ godot::Dictionary collect_scene_load_script_diagnostics(
         godot::String resolved_path = request.get("resolved_path", "");
         requested_paths[normalize_script_path_for_match(resolved_path)] = true;
     }
+    return requested_paths;
+}
 
-    godot::Dictionary per_file;
-    scene_summary["scene_load_enabled"] = !requested_paths.is_empty();
+godot::Dictionary scene_load_skip_summary() {
+    godot::Dictionary scene_summary;
+    scene_summary["scene_load_enabled"] = false;
+    scene_summary["scene_load_skipped"] = true;
+    scene_summary["scene_load_skip_reason"] =
+        "Skipped for scan_project:true to avoid instantiating every project scene in the open editor.";
+    scene_summary["scene_load_may_miss"] =
+        "Script errors that only occur when scripts are attached to or loaded through scenes may be missed, including missing unique nodes used by %Name, invalid scene NodePath wiring, broken exported scene/resource assignments, and script initialization side effects.";
     scene_summary["scene_load_scene_count"] = 0;
     scene_summary["scene_load_diagnostic_count"] = 0;
-    if (requested_paths.is_empty()) {
-        return per_file;
-    }
+    return scene_summary;
+}
 
-    godot::Array scene_paths;
-    collect_scene_paths_recursive("res://", scene_paths);
-    scene_summary["scene_load_scene_count"] = scene_paths.size();
-
-    int diagnostic_count = 0;
-    for (int i = 0; i < scene_paths.size(); i++) {
-        godot::String scene_path = scene_paths[i];
+int append_scene_load_diagnostics_for_scene(
+    const godot::String &scene_path,
+    const godot::Dictionary &requested_paths,
+    godot::Dictionary &per_file) {
+    godot::Node *root = nullptr;
+    godot::Array captured;
+    {
+        std::lock_guard<std::mutex> lock(diagnostic_logger_capture_mutex());
         godot::Ref<FennaraWarningCapture> capture;
         capture.instantiate();
-        godot::OS::get_singleton()->add_logger(capture);
+        godot::OS *os = godot::OS::get_singleton();
+        if (os != nullptr) {
+            os->add_logger(capture);
+        }
 
         godot::Ref<godot::PackedScene> packed =
             godot::ResourceLoader::get_singleton()->load(
                 scene_path, "PackedScene",
                 godot::ResourceLoader::CACHE_MODE_IGNORE);
-        godot::Node *root = nullptr;
         if (packed.is_valid()) {
             root = packed->instantiate(godot::PackedScene::GEN_EDIT_STATE_MAIN);
         }
 
-        godot::OS::get_singleton()->remove_logger(capture);
-        if (root != nullptr) {
-            root->queue_free();
+        if (os != nullptr) {
+            os->remove_logger(capture);
         }
-
-        godot::Array captured = capture->get_captured();
-        for (int entry_idx = 0; entry_idx < captured.size(); entry_idx++) {
-            if (captured[entry_idx].get_type() != godot::Variant::DICTIONARY) {
-                continue;
-            }
-            godot::Dictionary entry = captured[entry_idx];
-            godot::String type = entry.get("type", "");
-            if (type != "script_error" && type != "error" &&
-                type != "warning") {
-                continue;
-            }
-
-            godot::Dictionary origin = script_origin_from_capture(entry);
-            godot::String script_file = origin.get("file", "");
-            godot::String match_path =
-                normalize_script_path_for_match(script_file);
-            if (match_path.is_empty() || !requested_paths.has(match_path)) {
-                continue;
-            }
-
-            godot::Dictionary diagnostic;
-            diagnostic["severity"] = type == "warning" ? "warning" : "error";
-            diagnostic["message"] = entry.get("message", "");
-            diagnostic["file"] = script_file;
-            diagnostic["line"] = origin.get("line", 0);
-            diagnostic["column"] = 0;
-            diagnostic["source"] = "scene_load";
-            diagnostic["scene_path"] = scene_path;
-            diagnostic["origin"] = origin.get("source", "");
-            diagnostic["captured_type"] = type;
-            diagnostic["captured_file"] = entry.get("file", "");
-            diagnostic["captured_line"] = entry.get("line", 0);
-            diagnostic["captured_function"] = entry.get("function", "");
-            if (entry.has("script_backtrace")) {
-                diagnostic["script_backtrace"] = entry["script_backtrace"];
-            }
-
-            godot::Array diagnostics = per_file.get(match_path, godot::Array());
-            diagnostics.append(diagnostic);
-            per_file[match_path] = diagnostics;
-            diagnostic_count++;
-        }
+        captured = capture->get_captured();
     }
 
-    scene_summary["scene_load_diagnostic_count"] = diagnostic_count;
-    return per_file;
+    if (root != nullptr) {
+        root->queue_free();
+    }
+
+    int diagnostic_count = 0;
+    for (int entry_idx = 0; entry_idx < captured.size(); entry_idx++) {
+        if (captured[entry_idx].get_type() != godot::Variant::DICTIONARY) {
+            continue;
+        }
+        godot::Dictionary entry = captured[entry_idx];
+        godot::String type = entry.get("type", "");
+        if (type != "script_error" && type != "error" &&
+            type != "warning") {
+            continue;
+        }
+
+        godot::Dictionary origin = script_origin_from_capture(entry);
+        godot::String script_file = origin.get("file", "");
+        godot::String match_path =
+            normalize_script_path_for_match(script_file);
+        if (match_path.is_empty() || !requested_paths.has(match_path)) {
+            continue;
+        }
+
+        godot::Dictionary diagnostic;
+        diagnostic["severity"] = type == "warning" ? "warning" : "error";
+        diagnostic["message"] = entry.get("message", "");
+        diagnostic["file"] = script_file;
+        diagnostic["line"] = origin.get("line", 0);
+        diagnostic["column"] = 0;
+        diagnostic["source"] = "scene_load";
+        diagnostic["scene_path"] = scene_path;
+        diagnostic["origin"] = origin.get("source", "");
+        diagnostic["captured_type"] = type;
+        diagnostic["captured_file"] = entry.get("file", "");
+        diagnostic["captured_line"] = entry.get("line", 0);
+        diagnostic["captured_function"] = entry.get("function", "");
+        if (entry.has("script_backtrace")) {
+            diagnostic["script_backtrace"] = entry["script_backtrace"];
+        }
+
+        godot::Array diagnostics = per_file.get(match_path, godot::Array());
+        diagnostics.append(diagnostic);
+        per_file[match_path] = diagnostics;
+        diagnostic_count++;
+    }
+
+    return diagnostic_count;
+}
+
+godot::Dictionary build_script_diagnostics_result(
+    const godot::Array &valid_requests,
+    const godot::Array &initial_item_results,
+    const godot::Dictionary &per_file,
+    const godot::Dictionary &language_errors,
+    const godot::Dictionary &scene_load_per_file,
+    const godot::Dictionary &scene_load_summary,
+    bool scan_project) {
+    godot::Array item_results = initial_item_results.duplicate();
+    int total_errors = 0;
+    int total_warnings = 0;
+    int total_info = 0;
+    int total_hints = 0;
+    int total_diagnostics = 0;
+    int checked_count = 0;
+
+    for (int i = 0; i < valid_requests.size(); i++) {
+        godot::Dictionary request = valid_requests[i];
+        godot::String file_path = request["file_path"];
+        godot::String resolved_path = request["resolved_path"];
+        godot::String language = request.get("language", "");
+
+        if (language_errors.has(language)) {
+            item_results.append(make_failed_file(
+                file_path,
+                language_errors.get(language, "Diagnostics failed")));
+            continue;
+        }
+
+        godot::Dictionary file_result =
+            per_file.get(resolved_path, empty_file_result());
+        godot::String match_path =
+            normalize_script_path_for_match(resolved_path);
+        if (scene_load_per_file.has(match_path)) {
+            godot::Array scene_diagnostics = scene_load_per_file[match_path];
+            for (int scene_diag_idx = 0;
+                 scene_diag_idx < scene_diagnostics.size();
+                 scene_diag_idx++) {
+                if (scene_diagnostics[scene_diag_idx].get_type() !=
+                    godot::Variant::DICTIONARY) {
+                    continue;
+                }
+                godot::Dictionary diagnostic =
+                    scene_diagnostics[scene_diag_idx];
+                diagnostic["file"] = file_path;
+                append_diagnostic_to_file_result(file_result, diagnostic);
+            }
+        }
+        int file_errors = static_cast<int>(file_result.get("total_errors", 0));
+        int file_warnings =
+            static_cast<int>(file_result.get("total_warnings", 0));
+        int file_info = static_cast<int>(file_result.get("total_info", 0));
+        int file_hints = static_cast<int>(file_result.get("total_hints", 0));
+        int diagnostic_count =
+            file_errors + file_warnings + file_info + file_hints;
+        total_errors += file_errors;
+        total_warnings += file_warnings;
+        total_info += file_info;
+        total_hints += file_hints;
+        total_diagnostics += diagnostic_count;
+
+        item_results.append(make_success_file(file_path, file_result));
+        checked_count++;
+    }
+
+    FLOG_TOOL(godot::String("Diag: complete, files=") +
+              godot::String::num_int64(checked_count) +
+              " errors=" + godot::String::num_int64(total_errors) +
+              " warnings=" + godot::String::num_int64(total_warnings) +
+              " issues=" + godot::String::num_int64(total_diagnostics));
+    godot::Dictionary summary = make_summary(
+        item_results,
+        scan_project,
+        checked_count,
+        total_errors,
+        total_warnings,
+        total_info,
+        total_hints
+    );
+    godot::Array scene_summary_keys = scene_load_summary.keys();
+    for (int i = 0; i < scene_summary_keys.size(); i++) {
+        summary[scene_summary_keys[i]] =
+            scene_load_summary[scene_summary_keys[i]];
+    }
+
+    godot::Dictionary result;
+    result["success"] = int(summary["failure_count"]) == 0;
+    result["tool_name"] = "script_diagnostics";
+    result["format_version"] = kResultVersion;
+    result["summary"] = summary;
+    result["files"] = item_results;
+    result["scan_project"] = scan_project;
+    if (!(bool)result["success"]) {
+        result["error"] = "One or more files could not be checked.";
+    }
+    return result;
 }
 
 bool is_shader_wrapper_error(const godot::String &message) {
@@ -407,20 +534,29 @@ godot::Dictionary diagnose_shader_file(const godot::String &resolved_path,
                                        const godot::String &display_path) {
     godot::String content = file_utils::read_file_content(resolved_path);
 
-    godot::Ref<FennaraWarningCapture> capture;
-    capture.instantiate();
-    godot::OS::get_singleton()->add_logger(capture);
+    godot::Array captured;
+    {
+        std::lock_guard<std::mutex> lock(diagnostic_logger_capture_mutex());
+        godot::Ref<FennaraWarningCapture> capture;
+        capture.instantiate();
+        godot::OS *os = godot::OS::get_singleton();
+        if (os != nullptr) {
+            os->add_logger(capture);
+        }
 
-    godot::Ref<godot::Shader> shader;
-    shader.instantiate();
-    shader->set_code(content);
-    godot::RID shader_rid = shader->get_rid();
-    godot::List<godot::PropertyInfo> shader_params;
-    shader->get_shader_uniform_list(&shader_params);
+        godot::Ref<godot::Shader> shader;
+        shader.instantiate();
+        shader->set_code(content);
+        godot::RID shader_rid = shader->get_rid();
+        (void)shader_rid;
+        godot::List<godot::PropertyInfo> shader_params;
+        shader->get_shader_uniform_list(&shader_params);
 
-    godot::OS::get_singleton()->remove_logger(capture);
-
-    godot::Array captured = capture->get_captured();
+        if (os != nullptr) {
+            os->remove_logger(capture);
+        }
+        captured = capture->get_captured();
+    }
     godot::Array diagnostics;
     int total_errors = 0;
     int total_warnings = 0;
@@ -494,6 +630,8 @@ godot::Dictionary diagnose_shader_file(const godot::String &resolved_path,
 void FennaraScriptDiagnosticsTool::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("execute", "args"),
                                 &FennaraScriptDiagnosticsTool::execute);
+    godot::ClassDB::bind_method(godot::D_METHOD("cancel"),
+                                &FennaraScriptDiagnosticsTool::cancel);
     godot::ClassDB::bind_method(godot::D_METHOD("get_result"),
                                 &FennaraScriptDiagnosticsTool::get_result);
     godot::ClassDB::bind_method(godot::D_METHOD("is_finished"),
@@ -501,6 +639,10 @@ void FennaraScriptDiagnosticsTool::_bind_methods() {
 
     godot::ClassDB::bind_method(godot::D_METHOD("_worker"),
                                 &FennaraScriptDiagnosticsTool::_worker);
+    godot::ClassDB::bind_method(godot::D_METHOD("_finish_on_main_thread"),
+                                &FennaraScriptDiagnosticsTool::_finish_on_main_thread);
+    godot::ClassDB::bind_method(godot::D_METHOD("_process_scene_load_diagnostics"),
+                                &FennaraScriptDiagnosticsTool::_process_scene_load_diagnostics);
     godot::ClassDB::bind_method(godot::D_METHOD("_on_complete"),
                                 &FennaraScriptDiagnosticsTool::_on_complete);
 
@@ -513,6 +655,7 @@ void FennaraScriptDiagnosticsTool::_bind_methods() {
 // ---------------------------------------------------------------------------
 
 void FennaraScriptDiagnosticsTool::execute(const godot::Dictionary &args) {
+    _cancelled.store(false);
     _args = args;
     _finished = false;
     _result = godot::Dictionary();
@@ -520,6 +663,10 @@ void FennaraScriptDiagnosticsTool::execute(const godot::Dictionary &args) {
     _mutex.instantiate();
     _thread.instantiate();
     _thread->start(callable_mp(this, &FennaraScriptDiagnosticsTool::_worker));
+}
+
+void FennaraScriptDiagnosticsTool::cancel() {
+    _cancelled.store(true);
 }
 
 godot::Dictionary FennaraScriptDiagnosticsTool::get_result() const {
@@ -531,16 +678,196 @@ bool FennaraScriptDiagnosticsTool::is_finished() const {
 }
 
 FennaraScriptDiagnosticsTool::~FennaraScriptDiagnosticsTool() {
+    cancel();
     if (_thread.is_valid() && _thread->is_started()) {
         _thread->wait_to_finish();
     }
+}
+
+bool FennaraScriptDiagnosticsTool::_is_cancelled() const {
+    return _cancelled.load();
 }
 
 // ---------------------------------------------------------------------------
 // Main-thread callback
 // ---------------------------------------------------------------------------
 
+void FennaraScriptDiagnosticsTool::_finish_with_result(
+    const godot::Dictionary &result) {
+    if (_is_cancelled()) {
+        return;
+    }
+
+    _mutex->lock();
+    _result = result;
+    _finished = true;
+    _pending_state = godot::Dictionary();
+    _scene_load_requested_paths = godot::Dictionary();
+    _scene_load_per_file = godot::Dictionary();
+    _scene_load_summary = godot::Dictionary();
+    _scene_load_scene_paths = godot::Array();
+    _scene_load_index = 0;
+    _mutex->unlock();
+
+    call_deferred("_on_complete");
+}
+
+void FennaraScriptDiagnosticsTool::_finish_on_main_thread() {
+    if (_is_cancelled()) {
+        return;
+    }
+
+    godot::Dictionary state;
+    {
+        _mutex->lock();
+        state = _pending_state;
+        _mutex->unlock();
+    }
+
+    if (state.is_empty()) {
+        _finish_with_result(make_argument_error("Diagnostics state was empty."));
+        return;
+    }
+
+    bool scan_project = state.get("scan_project", false);
+    godot::Array valid_requests = state.get("valid_requests", godot::Array());
+    godot::Array item_results = state.get("item_results", godot::Array());
+    godot::Dictionary per_file = state.get("per_file", godot::Dictionary());
+    godot::Dictionary language_errors =
+        state.get("language_errors", godot::Dictionary());
+    if (scan_project) {
+        godot::Dictionary result = build_script_diagnostics_result(
+            valid_requests,
+            item_results,
+            per_file,
+            language_errors,
+            godot::Dictionary(),
+            scene_load_skip_summary(),
+            scan_project);
+        _finish_with_result(result);
+        return;
+    }
+
+    _scene_load_requested_paths =
+        requested_paths_from_valid_requests(valid_requests);
+    _scene_load_per_file = godot::Dictionary();
+    _scene_load_summary = godot::Dictionary();
+    _scene_load_summary["scene_load_enabled"] =
+        !_scene_load_requested_paths.is_empty();
+    _scene_load_summary["scene_load_skipped"] = false;
+    _scene_load_summary["scene_load_scene_count"] = 0;
+    _scene_load_summary["scene_load_diagnostic_count"] = 0;
+    _scene_load_scene_paths = godot::Array();
+    _scene_load_index = 0;
+
+    if (_scene_load_requested_paths.is_empty()) {
+        godot::Dictionary result = build_script_diagnostics_result(
+            valid_requests,
+            item_results,
+            per_file,
+            language_errors,
+            _scene_load_per_file,
+            _scene_load_summary,
+            scan_project);
+        _finish_with_result(result);
+        return;
+    }
+
+    _scene_load_scene_paths = state.get("scene_paths", godot::Array());
+    _scene_load_summary["scene_load_scene_count"] = _scene_load_scene_paths.size();
+    _process_scene_load_diagnostics();
+}
+
+void FennaraScriptDiagnosticsTool::_process_scene_load_diagnostics() {
+    if (_is_cancelled()) {
+        return;
+    }
+
+    godot::Dictionary state;
+    {
+        _mutex->lock();
+        state = _pending_state;
+        _mutex->unlock();
+    }
+
+    if (state.is_empty()) {
+        _finish_with_result(make_argument_error("Diagnostics state was empty."));
+        return;
+    }
+
+    godot::Time *time = godot::Time::get_singleton();
+    uint64_t start_ms = time == nullptr
+        ? 0
+        : static_cast<uint64_t>(time->get_ticks_msec());
+    int processed = 0;
+    int diagnostic_count = static_cast<int>(
+        _scene_load_summary.get("scene_load_diagnostic_count", 0));
+
+    while (_scene_load_index < _scene_load_scene_paths.size()) {
+        if (_is_cancelled()) {
+            return;
+        }
+
+        diagnostic_count += append_scene_load_diagnostics_for_scene(
+            _scene_load_scene_paths[_scene_load_index],
+            _scene_load_requested_paths,
+            _scene_load_per_file);
+        _scene_load_index++;
+        processed++;
+
+        if (processed >= kSceneLoadScenesPerTick) {
+            break;
+        }
+        if (time != nullptr) {
+            uint64_t elapsed = static_cast<uint64_t>(time->get_ticks_msec()) - start_ms;
+            if (elapsed >= kSceneLoadBudgetMs) {
+                break;
+            }
+        }
+    }
+
+    _scene_load_summary["scene_load_diagnostic_count"] = diagnostic_count;
+
+    if (_is_cancelled()) {
+        return;
+    }
+
+    if (_scene_load_index < _scene_load_scene_paths.size()) {
+        godot::Engine *engine = godot::Engine::get_singleton();
+        godot::SceneTree *tree = nullptr;
+        if (engine != nullptr) {
+            tree = godot::Object::cast_to<godot::SceneTree>(engine->get_main_loop());
+        }
+        if (tree != nullptr) {
+            godot::Ref<godot::SceneTreeTimer> timer = tree->create_timer(0.01);
+            timer->connect("timeout", callable_mp(
+                this, &FennaraScriptDiagnosticsTool::_process_scene_load_diagnostics));
+        } else {
+            call_deferred("_process_scene_load_diagnostics");
+        }
+        return;
+    }
+
+    godot::Array valid_requests = state.get("valid_requests", godot::Array());
+    godot::Array item_results = state.get("item_results", godot::Array());
+    godot::Dictionary per_file = state.get("per_file", godot::Dictionary());
+    godot::Dictionary language_errors =
+        state.get("language_errors", godot::Dictionary());
+    godot::Dictionary result = build_script_diagnostics_result(
+        valid_requests,
+        item_results,
+        per_file,
+        language_errors,
+        _scene_load_per_file,
+        _scene_load_summary,
+        state.get("scan_project", false));
+    _finish_with_result(result);
+}
+
 void FennaraScriptDiagnosticsTool::_on_complete() {
+    if (_is_cancelled()) {
+        return;
+    }
     emit_signal("complete", _result);
 }
 
@@ -549,12 +876,15 @@ void FennaraScriptDiagnosticsTool::_on_complete() {
 // ---------------------------------------------------------------------------
 
 void FennaraScriptDiagnosticsTool::_worker() {
+    if (_is_cancelled()) {
+        return;
+    }
+
     godot::Dictionary result;
     godot::Variant file_paths_var;
     godot::Array file_paths;
     godot::Array gd_files_to_check;
     godot::Array cs_files_to_check;
-    godot::Array shader_files_to_check;
     godot::Array valid_requests;
     godot::Array item_results;
     bool scan_project = _args.get("scan_project", false);
@@ -596,6 +926,10 @@ void FennaraScriptDiagnosticsTool::_worker() {
 
     for (int i = 0; i < file_paths.size(); i++) {
         godot::Variant item = file_paths[i];
+        if (_is_cancelled()) {
+            return;
+        }
+
         if (item.get_type() != godot::Variant::STRING) {
             item_results.append(make_failed_file(
                 "file_paths[" + godot::String::num_int64(i) + "]",
@@ -631,9 +965,7 @@ void FennaraScriptDiagnosticsTool::_worker() {
 
         if (resolved.ends_with(".cs")) {
             cs_files_to_check.append(resolved);
-        } else if (resolved.ends_with(".gdshader")) {
-            shader_files_to_check.append(resolved);
-        } else {
+        } else if (resolved.ends_with(".gd")) {
             gd_files_to_check.append(resolved);
         }
         godot::Dictionary request;
@@ -661,6 +993,10 @@ void FennaraScriptDiagnosticsTool::_worker() {
         godot::Dictionary language_errors;
 
         if (!gd_files_to_check.is_empty()) {
+            if (_is_cancelled()) {
+                return;
+            }
+
             godot::Dictionary gd_diag_result =
                 gdscript_lsp::diagnose_files(gd_files_to_check, "fennara-diagnostics");
             if (!(bool)gd_diag_result.get("success", false)) {
@@ -679,6 +1015,10 @@ void FennaraScriptDiagnosticsTool::_worker() {
         }
 
         if (!cs_files_to_check.is_empty()) {
+            if (_is_cancelled()) {
+                return;
+            }
+
             godot::Dictionary cs_diag_result =
                 csharp_lsp::diagnose_files(cs_files_to_check, "fennara-csharp-diagnostics");
             if (!(bool)cs_diag_result.get("success", false)) {
@@ -696,100 +1036,52 @@ void FennaraScriptDiagnosticsTool::_worker() {
             }
         }
 
-        int total_errors = 0;
-        int total_warnings = 0;
-        int total_info = 0;
-        int total_hints = 0;
-        int total_diagnostics = 0;
-        int checked_count = 0;
-        godot::Dictionary scene_load_summary;
-        godot::Dictionary scene_load_per_file =
-            collect_scene_load_script_diagnostics(
-                valid_requests, scene_load_summary);
-
         for (int i = 0; i < valid_requests.size(); i++) {
-            godot::Dictionary request = valid_requests[i];
-            godot::String file_path = request["file_path"];
-            godot::String resolved_path = request["resolved_path"];
-            godot::String language = request.get("language", "");
+            if (_is_cancelled()) {
+                return;
+            }
 
-            if (language_errors.has(language)) {
-                item_results.append(make_failed_file(
-                    file_path,
-                    language_errors.get(language, "Diagnostics failed")));
+            godot::Dictionary request = valid_requests[i];
+            godot::String language = request.get("language", "");
+            if (language != "gdshader") {
                 continue;
             }
 
-            godot::Dictionary file_result =
-                per_file.get(resolved_path, empty_file_result());
-            if (language == "gdshader") {
-                file_result = diagnose_shader_file(resolved_path, file_path);
-            }
-            godot::String match_path =
-                normalize_script_path_for_match(resolved_path);
-            if (scene_load_per_file.has(match_path)) {
-                godot::Array scene_diagnostics = scene_load_per_file[match_path];
-                for (int scene_diag_idx = 0;
-                     scene_diag_idx < scene_diagnostics.size();
-                     scene_diag_idx++) {
-                    if (scene_diagnostics[scene_diag_idx].get_type() !=
-                        godot::Variant::DICTIONARY) {
-                        continue;
-                    }
-                    godot::Dictionary diagnostic =
-                        scene_diagnostics[scene_diag_idx];
-                    diagnostic["file"] = file_path;
-                    append_diagnostic_to_file_result(file_result, diagnostic);
-                }
-            }
-            int file_errors = static_cast<int>(file_result.get("total_errors", 0));
-            int file_warnings =
-                static_cast<int>(file_result.get("total_warnings", 0));
-            int file_info = static_cast<int>(file_result.get("total_info", 0));
-            int file_hints = static_cast<int>(file_result.get("total_hints", 0));
-            int diagnostic_count =
-                file_errors + file_warnings + file_info + file_hints;
-            total_errors += file_errors;
-            total_warnings += file_warnings;
-            total_info += file_info;
-            total_hints += file_hints;
-            total_diagnostics += diagnostic_count;
-
-            item_results.append(make_success_file(file_path, file_result));
-            checked_count++;
+            godot::String resolved_path = request["resolved_path"];
+            godot::String display_path = request["file_path"];
+            per_file[resolved_path] =
+                diagnose_shader_file(resolved_path, display_path);
         }
 
-        FLOG_TOOL(godot::String("Diag: complete, files=") +
-                  godot::String::num_int64(checked_count) +
-                  " errors=" + godot::String::num_int64(total_errors) +
-                  " warnings=" + godot::String::num_int64(total_warnings) +
-                  " issues=" + godot::String::num_int64(total_diagnostics));
-        godot::Dictionary summary = make_summary(
-            item_results,
-            scan_project,
-            checked_count,
-            total_errors,
-            total_warnings,
-            total_info,
-            total_hints
-        );
-        godot::Array scene_summary_keys = scene_load_summary.keys();
-        for (int i = 0; i < scene_summary_keys.size(); i++) {
-            summary[scene_summary_keys[i]] =
-                scene_load_summary[scene_summary_keys[i]];
+        godot::Array scene_paths;
+        if (!scan_project &&
+            !requested_paths_from_valid_requests(valid_requests).is_empty()) {
+            collect_scene_paths_recursive("res://", scene_paths);
         }
-        result["success"] = int(summary["failure_count"]) == 0;
-        result["tool_name"] = "script_diagnostics";
-        result["format_version"] = kResultVersion;
-        result["summary"] = summary;
-        result["files"] = item_results;
-        result["scan_project"] = scan_project;
-        if (!(bool)result["success"]) {
-            result["error"] = "One or more files could not be checked.";
+
+        godot::Dictionary state;
+        state["valid_requests"] = valid_requests;
+        state["item_results"] = item_results;
+        state["per_file"] = per_file;
+        state["language_errors"] = language_errors;
+        state["scene_paths"] = scene_paths;
+        state["scan_project"] = scan_project;
+
+        _mutex->lock();
+        _pending_state = state;
+        _mutex->unlock();
+
+        if (!_is_cancelled()) {
+            call_deferred("_finish_on_main_thread");
         }
+        return;
     }
 
 done:
+    if (_is_cancelled()) {
+        return;
+    }
+
     _mutex->lock();
     _result = result;
     _finished = true;

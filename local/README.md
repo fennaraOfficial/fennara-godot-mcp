@@ -36,7 +36,7 @@ into the Godot project:
 
 ```text
 AGENTS.md
-.fennara/ai/guidelines.md
+addons/fennara/ai/guidelines.md
 ```
 
 Build:

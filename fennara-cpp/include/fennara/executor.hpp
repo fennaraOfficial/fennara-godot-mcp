@@ -5,6 +5,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <atomic>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -26,12 +27,15 @@ public:
     static godot::Array execute_tool_calls(const godot::Array &tool_calls);
 
 private:
-    static bool _is_thread_safe(const godot::String &name);
+    static bool _is_thread_safe(const godot::String &name,
+                                const godot::Dictionary &args);
 
     godot::Array _async_results;
     godot::Array _active_async_tools;  // prevent RefCounted tools from being freed mid-execution
     int _pending_async_tools = 0;
     bool _batch_cancelled = false;
+    uint64_t _async_batch_generation = 0;
+    void _cancel_active_async_tools();
 
     // --- Batch diagnostics for script writes ---
     struct PendingScriptWrite {
@@ -52,8 +56,8 @@ private:
     std::mutex _batch_diag_mutex;
     godot::Dictionary _batch_diag_results;  // file_path -> per-file diagnostics dict
 
-    void _run_batch_diagnostics();
-    void _on_batch_diagnostics_complete();
+    void _run_batch_diagnostics(uint64_t batch_generation);
+    void _on_batch_diagnostics_complete(uint64_t batch_generation);
 
     // --- Post-batch engine warning capture for modified scenes ---
     struct ModifiedScene {
@@ -84,8 +88,8 @@ private:
     godot::Array _screenshot_captures;
     int _screenshot_view_index = 0;
     void _start_next_screenshot_scene();
-    void _on_screenshot_scene_opened();
-    void _on_screenshot_capture();
+    void _on_screenshot_scene_opened(uint64_t batch_generation);
+    void _on_screenshot_capture(uint64_t batch_generation);
 
     // --- Validate scene async (structural checks + daemon runtime batch) ---
     struct PendingValidateScene {
@@ -96,12 +100,18 @@ private:
     bool _validate_scene_running = false;
     int _validate_scene_tool_index = -1;
     godot::Dictionary _validate_scene_args;
+    godot::Array _validate_scene_paths;
+    godot::Array _validate_scene_results;
+    godot::Array _validate_scene_runtime_eligible_paths;
+    int _validate_scene_index = 0;
     std::thread _validate_scene_thread;
     std::mutex _validate_scene_mutex;
+    std::atomic_bool _validate_scene_runtime_cancelled{false};
     bool _validate_scene_thread_done = false;
     godot::Dictionary _validate_scene_thread_result;
     void _start_next_validate_scene();
-    void _on_validate_scene_complete();
+    void _process_next_validate_scene(uint64_t batch_generation);
+    void _on_validate_scene_runtime_complete(uint64_t batch_generation);
 
     // --- Runtime script async (submit to live runtime helper -> wait for completion) ---
     struct PendingRuntimeScript {
@@ -119,7 +129,7 @@ private:
     bool _runtime_script_thread_done = false;
     godot::Dictionary _runtime_script_thread_result;
     void _start_next_runtime_script();
-    void _on_runtime_script_check_complete();
+    void _on_runtime_script_check_complete(uint64_t batch_generation);
 
     // --- Runtime session async (preflight -> daemon-managed scene start/status/stop) ---
     struct PendingRuntimeSession {
@@ -134,8 +144,12 @@ private:
     std::mutex _runtime_session_mutex;
     bool _runtime_session_thread_done = false;
     godot::Dictionary _runtime_session_thread_result;
+    godot::String _runtime_session_phase;
+    godot::Dictionary _runtime_session_build_result;
+    godot::Dictionary _runtime_session_preflight_result;
+    godot::Dictionary _runtime_session_script_context;
     void _start_next_runtime_session();
-    void _on_runtime_session_complete();
+    void _on_runtime_session_complete(uint64_t batch_generation);
 
 public:
     FennaraExecutor();
@@ -146,7 +160,8 @@ public:
     void _on_async_tool_complete(const godot::Dictionary &result,
                                  int tool_index,
                                  const godot::String &tool_name,
-                                 const godot::Dictionary &tool_args = godot::Dictionary());
+                                 const godot::Dictionary &tool_args = godot::Dictionary(),
+                                 uint64_t batch_generation = 0);
     void _check_completion();
     void set_execution_context(const godot::String &request_id, int session_index);
 

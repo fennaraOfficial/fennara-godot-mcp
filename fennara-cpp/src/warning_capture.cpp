@@ -61,6 +61,7 @@ void FennaraWarningCapture::_log_error(const godot::String &p_function, const go
         entry["script_backtrace"] = backtrace_frames;
     }
 
+    std::lock_guard<std::mutex> lock(_captured_mutex);
     _captured.append(entry);
 }
 
@@ -75,14 +76,17 @@ void FennaraWarningCapture::_log_message(const godot::String &p_message, bool p_
     entry["file"] = "";
     entry["line"] = 0;
     entry["function"] = "";
+    std::lock_guard<std::mutex> lock(_captured_mutex);
     _captured.append(entry);
 }
 
 godot::Array FennaraWarningCapture::get_captured() const {
+    std::lock_guard<std::mutex> lock(_captured_mutex);
     return _captured;
 }
 
 void FennaraWarningCapture::clear() {
+    std::lock_guard<std::mutex> lock(_captured_mutex);
     _captured.clear();
 }
 

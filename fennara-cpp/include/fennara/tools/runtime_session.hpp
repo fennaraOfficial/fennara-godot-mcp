@@ -15,6 +15,11 @@ protected:
 
 public:
     static godot::Dictionary execute(const godot::Dictionary &args);
+    static godot::Dictionary execute_start_after_preflight(
+        const godot::Dictionary &args,
+        const godot::Dictionary &build_result,
+        const godot::Dictionary &preflight,
+        const godot::Dictionary &script_preflight);
 };
 
 } // namespace fennara

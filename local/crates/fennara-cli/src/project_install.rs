@@ -34,7 +34,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     };
     println!("addon: copying from {}", display_path(&source));
     install_addon(&project_dir, &source)?;
-    println!("guidance: writing AGENTS.md and .fennara/ai/guidelines.md");
+    println!("guidance: writing AGENTS.md and addons/fennara/ai/guidelines.md");
     project_guidance::write(&project_dir)?;
     if options.csharp {
         println!("csharp: installing language server support");
@@ -44,7 +44,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     println!("Installed Fennara");
     println!("version: {version}");
     println!("project: {}", display_path(&project_dir));
-    println!("guidance: wrote AGENTS.md and .fennara/ai/guidelines.md");
+    println!("guidance: wrote AGENTS.md and addons/fennara/ai/guidelines.md");
     if options.csharp {
         println!("csharp: installed");
     }

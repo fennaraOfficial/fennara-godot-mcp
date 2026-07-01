@@ -36,19 +36,19 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     let package = release_package::ensure_package(&options.version)?;
     let project_version = project_install::project_addon_version(&project_dir);
     if project_version.as_deref() == Some(package.version.as_str()) {
-        println!("guidance: refreshing AGENTS.md and .fennara/ai/guidelines.md");
+        println!("guidance: refreshing AGENTS.md and addons/fennara/ai/guidelines.md");
         project_guidance::write(&project_dir)?;
         println!("Fennara is already up to date.");
         println!("version: {}", package.version);
         println!("project: {}", display_path(&project_dir));
-        println!("guidance: refreshed AGENTS.md and .fennara/ai/guidelines.md");
+        println!("guidance: refreshed AGENTS.md and addons/fennara/ai/guidelines.md");
         webview_prereq::warn_for_current_platform()?;
         return Ok(());
     }
 
     println!("addon: copying from {}", display_path(&package.addon_dir));
     project_install::install_addon(&project_dir, &package.addon_dir)?;
-    println!("guidance: refreshing AGENTS.md and .fennara/ai/guidelines.md");
+    println!("guidance: refreshing AGENTS.md and addons/fennara/ai/guidelines.md");
     project_guidance::write(&project_dir)?;
     println!("Updated Fennara");
     println!(
@@ -57,7 +57,7 @@ pub fn run(args: Vec<&str>) -> Result<(), String> {
     );
     println!("to: {}", package.version);
     println!("project: {}", display_path(&project_dir));
-    println!("guidance: refreshed AGENTS.md and .fennara/ai/guidelines.md");
+    println!("guidance: refreshed AGENTS.md and addons/fennara/ai/guidelines.md");
     webview_prereq::warn_for_current_platform()?;
     Ok(())
 }

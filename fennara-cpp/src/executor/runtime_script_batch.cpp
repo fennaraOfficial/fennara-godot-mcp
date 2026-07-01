@@ -24,6 +24,7 @@ void FennaraExecutor::_start_next_runtime_script() {
 
     PendingRuntimeScript pending = _pending_runtime_scripts.front();
     _pending_runtime_scripts.erase(_pending_runtime_scripts.begin());
+    uint64_t batch_generation = _async_batch_generation;
 
     _runtime_script_running = true;
     _runtime_script_tool_index = pending.tool_index;
@@ -49,14 +50,14 @@ void FennaraExecutor::_start_next_runtime_script() {
     godot::SceneTree *tree = get_tree();
     if (tree) {
         godot::Ref<godot::SceneTreeTimer> timer = tree->create_timer(kPollSeconds);
-        timer->connect("timeout", callable_mp(this, &FennaraExecutor::_on_runtime_script_check_complete));
+        timer->connect("timeout", callable_mp(this, &FennaraExecutor::_on_runtime_script_check_complete).bind(batch_generation));
     } else {
-        _on_runtime_script_check_complete();
+        _on_runtime_script_check_complete(batch_generation);
     }
 }
 
-void FennaraExecutor::_on_runtime_script_check_complete() {
-    if (_batch_cancelled) {
+void FennaraExecutor::_on_runtime_script_check_complete(uint64_t batch_generation) {
+    if (_batch_cancelled || batch_generation != _async_batch_generation) {
         return;
     }
 
@@ -76,7 +77,7 @@ void FennaraExecutor::_on_runtime_script_check_complete() {
         if (tree) {
             godot::Ref<godot::SceneTreeTimer> timer =
                 tree->create_timer(kPollSeconds);
-            timer->connect("timeout", callable_mp(this, &FennaraExecutor::_on_runtime_script_check_complete));
+            timer->connect("timeout", callable_mp(this, &FennaraExecutor::_on_runtime_script_check_complete).bind(batch_generation));
         }
         return;
     }
@@ -93,7 +94,7 @@ void FennaraExecutor::_on_runtime_script_check_complete() {
     _runtime_script_thread_done = false;
     _runtime_script_thread_result = godot::Dictionary();
 
-    _on_async_tool_complete(result, idx, "runtime_script", args);
+    _on_async_tool_complete(result, idx, "runtime_script", args, batch_generation);
     _start_next_runtime_script();
 }
 

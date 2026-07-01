@@ -6,11 +6,12 @@ const AGENTS_BLOCK: &str = include_str!("../../../templates/AGENTS.block.md");
 const GUIDELINES_MD: &str = include_str!("../../../templates/fennara-guidelines.md");
 const AGENTS_START: &str = "<!-- fennara-agents-start -->";
 const AGENTS_END: &str = "<!-- fennara-agents-end -->";
-const GUIDELINES_PATH: &[&str] = &[".fennara", "ai", "guidelines.md"];
+const GUIDELINES_PATH: &[&str] = &["addons", "fennara", "ai", "guidelines.md"];
 
 pub fn write(project_dir: &Path) -> Result<(), String> {
     write_guidelines(project_dir)?;
-    update_agents(project_dir)
+    update_agents(project_dir)?;
+    update_gitignore_if_present(project_dir)
 }
 
 fn write_guidelines(project_dir: &Path) -> Result<(), String> {
@@ -36,6 +37,26 @@ fn update_agents(project_dir: &Path) -> Result<(), String> {
     let next = replace_or_append_block(&existing, &block)?;
 
     write_if_changed(&agents_path, next.as_bytes())
+}
+
+fn update_gitignore_if_present(project_dir: &Path) -> Result<(), String> {
+    let gitignore_path = project_dir.join(".gitignore");
+    if !gitignore_path.is_file() {
+        return Ok(());
+    }
+
+    let existing = fs::read_to_string(&gitignore_path)
+        .map_err(|err| format!("failed to read {}: {err}", display_path(&gitignore_path)))?;
+    let already_ignored = existing
+        .lines()
+        .any(|line| matches!(line.trim(), ".fennara" | ".fennara/"));
+    if already_ignored {
+        return Ok(());
+    }
+
+    let mut next = ensure_single_trailing_newline(&existing);
+    next.push_str(".fennara/\n");
+    write_if_changed(&gitignore_path, next.as_bytes())
 }
 
 fn replace_or_append_block(existing: &str, block: &str) -> Result<String, String> {
@@ -92,5 +113,23 @@ mod tests {
             "before\n<!-- fennara-agents-start -->\nold\n<!-- fennara-agents-end -->\nafter\n";
         let next = replace_or_append_block(existing, "new").unwrap();
         assert_eq!(next, "before\nnew\nafter\n");
+    }
+
+    #[test]
+    fn appends_fennara_to_existing_gitignore() {
+        let temp =
+            std::env::temp_dir().join(format!("fennara-guidance-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&temp).unwrap();
+        let gitignore = temp.join(".gitignore");
+        fs::write(&gitignore, "target/\n").unwrap();
+
+        update_gitignore_if_present(&temp).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(&gitignore).unwrap(),
+            "target/\n.fennara/\n"
+        );
+        let _ = fs::remove_dir_all(&temp);
     }
 }

@@ -14,6 +14,7 @@
 #include <godot_cpp/core/class_db.hpp>
 
 #include <chrono>
+#include <mutex>
 #include <thread>
 
 namespace fennara {
@@ -26,6 +27,28 @@ constexpr int kLocalDaemonPort = 41287;
 godot::String &active_daemon_session_id() {
     static godot::String *session_id = memnew(godot::String);
     return *session_id;
+}
+
+std::mutex &active_daemon_session_mutex() {
+    static std::mutex *mutex = new std::mutex;
+    return *mutex;
+}
+
+godot::String get_active_daemon_session_id() {
+    std::lock_guard<std::mutex> lock(active_daemon_session_mutex());
+    return active_daemon_session_id();
+}
+
+void set_active_daemon_session_id(const godot::String &session_id) {
+    std::lock_guard<std::mutex> lock(active_daemon_session_mutex());
+    active_daemon_session_id() = session_id;
+}
+
+void clear_active_daemon_session_id_if_matches(const godot::String &session_id) {
+    std::lock_guard<std::mutex> lock(active_daemon_session_mutex());
+    if (active_daemon_session_id() == session_id) {
+        active_daemon_session_id() = "";
+    }
 }
 
 uint64_t daemon_now_ms() {
@@ -148,12 +171,50 @@ void FennaraRuntimeSessionTool::_bind_methods() {
         &FennaraRuntimeSessionTool::execute);
 }
 
+godot::Dictionary FennaraRuntimeSessionTool::execute_start_after_preflight(
+    const godot::Dictionary &args,
+    const godot::Dictionary &build_result,
+    const godot::Dictionary &preflight,
+    const godot::Dictionary &script_preflight) {
+    godot::String scene_path =
+        godot::String(args.get("scene_path", "")).strip_edges();
+    godot::String session_id = "runtime-" + godot::String::num_int64(
+        static_cast<int64_t>(daemon_now_ms()));
+    godot::String artifact_res_dir = artifact_dir(args);
+    godot::ProjectSettings *settings = godot::ProjectSettings::get_singleton();
+    godot::DirAccess::make_dir_recursive_absolute(
+        settings->globalize_path(artifact_res_dir));
+
+    godot::Dictionary payload;
+    payload["session_id"] = session_id;
+    payload["executable"] = resolve_godot_executable();
+    payload["working_directory"] = settings->globalize_path("res://");
+    payload["scene_path"] = scene_path;
+    payload["artifact_dir"] = settings->globalize_path(artifact_res_dir);
+    godot::Dictionary result = post_daemon("/runtime/session/start", payload);
+    result["tool_name"] = "runtime_session";
+    result["artifact_dir_res_path"] = artifact_res_dir;
+    result["csharp_build"] = build_result;
+    result["preflight"] = preflight;
+    result["script_preflight"] = script_preflight;
+    if (result.has("raw_log_path") && !result.has("log_path")) {
+        result["log_path"] = result["raw_log_path"];
+    }
+    if ((bool)result.get("success", false)) {
+        set_active_daemon_session_id(session_id);
+    }
+    return result;
+}
+
 godot::Dictionary FennaraRuntimeSessionTool::execute(
     const godot::Dictionary &args) {
     godot::String action =
         godot::String(args.get("action", "status")).strip_edges().to_lower();
     if (action.is_empty() || action == "status") {
-        godot::String session_id = godot::String(args.get("session_id", active_daemon_session_id())).strip_edges();
+        godot::String session_id = args.has("session_id")
+            ? godot::String(args.get("session_id", ""))
+            : get_active_daemon_session_id();
+        session_id = session_id.strip_edges();
         if (session_id.is_empty()) {
             godot::Dictionary result;
             result["success"] = true;
@@ -216,33 +277,14 @@ godot::Dictionary FennaraRuntimeSessionTool::execute(
             return result;
         }
 
-        godot::String session_id = "runtime-" + godot::String::num_int64(static_cast<int64_t>(daemon_now_ms()));
-        godot::String artifact_res_dir = artifact_dir(args);
-        godot::ProjectSettings *settings = godot::ProjectSettings::get_singleton();
-        godot::DirAccess::make_dir_recursive_absolute(settings->globalize_path(artifact_res_dir));
-
-        godot::Dictionary payload;
-        payload["session_id"] = session_id;
-        payload["executable"] = resolve_godot_executable();
-        payload["working_directory"] = settings->globalize_path("res://");
-        payload["scene_path"] = scene_path;
-        payload["artifact_dir"] = settings->globalize_path(artifact_res_dir);
-        godot::Dictionary result = post_daemon("/runtime/session/start", payload);
-        result["tool_name"] = "runtime_session";
-        result["artifact_dir_res_path"] = artifact_res_dir;
-        result["csharp_build"] = build_result;
-        result["preflight"] = preflight;
-        result["script_preflight"] = script_preflight;
-        if (result.has("raw_log_path") && !result.has("log_path")) {
-            result["log_path"] = result["raw_log_path"];
-        }
-        if ((bool)result.get("success", false)) {
-            active_daemon_session_id() = session_id;
-        }
-        return result;
+        return execute_start_after_preflight(
+            args, build_result, preflight, script_preflight);
     }
     if (action == "stop") {
-        godot::String session_id = godot::String(args.get("session_id", active_daemon_session_id())).strip_edges();
+        godot::String session_id = args.has("session_id")
+            ? godot::String(args.get("session_id", ""))
+            : get_active_daemon_session_id();
+        session_id = session_id.strip_edges();
         godot::Dictionary payload;
         payload["session_id"] = session_id;
         godot::Dictionary result = post_daemon("/runtime/session/stop", payload);
@@ -250,8 +292,8 @@ godot::Dictionary FennaraRuntimeSessionTool::execute(
         if (result.has("raw_log_path") && !result.has("log_path")) {
             result["log_path"] = result["raw_log_path"];
         }
-        if ((bool)result.get("success", false) && session_id == active_daemon_session_id()) {
-            active_daemon_session_id() = "";
+        if ((bool)result.get("success", false)) {
+            clear_active_daemon_session_id_if_matches(session_id);
         }
         return result;
     }

@@ -7,6 +7,8 @@
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 
+#include <mutex>
+
 namespace fennara {
 
 class FennaraWarningCapture : public godot::Logger {
@@ -28,6 +30,7 @@ public:
     void clear();
 
 private:
+    mutable std::mutex _captured_mutex;
     godot::Array _captured;
 };
 

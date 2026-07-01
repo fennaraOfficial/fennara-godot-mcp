@@ -262,7 +262,7 @@ The CLI also writes project guidance for AI coding agents:
 
 ```text
 AGENTS.md
-.fennara/ai/guidelines.md
+addons/fennara/ai/guidelines.md
 ```
 
 If you copy files manually instead of running `fennara install`, those guidance files are not created automatically.

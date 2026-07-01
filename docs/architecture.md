@@ -159,11 +159,10 @@ the CLI copies the release addon into:
 ```text
 <godot-project>/
   AGENTS.md
-  .fennara/
-    ai/
-      guidelines.md
   addons/
     fennara/
+      ai/
+        guidelines.md
 ```
 
 For C# projects:
@@ -240,7 +239,7 @@ It can update:
 
 - the installed CLI and local runtime package
 - the project addon
-- generated project guidance in `AGENTS.md` and `.fennara/ai/guidelines.md`
+- generated project guidance in `AGENTS.md` and `addons/fennara/ai/guidelines.md`
 - shared webview runtime assets needed by the current platform, such as Linux CEF
 - webview prerequisite warnings for the optional built-in chat dock
 

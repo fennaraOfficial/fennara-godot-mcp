@@ -28,25 +28,22 @@ void FennaraExecutor::_bind_methods() {
         godot::D_METHOD("set_execution_context", "request_id", "session_index"),
         &FennaraExecutor::set_execution_context);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("_on_async_tool_complete", "result", "tool_index", "tool_name", "tool_args"),
+        godot::D_METHOD("_on_async_tool_complete", "result", "tool_index", "tool_name", "tool_args", "batch_generation"),
         &FennaraExecutor::_on_async_tool_complete);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("_on_batch_diagnostics_complete"),
+        godot::D_METHOD("_on_batch_diagnostics_complete", "batch_generation"),
         &FennaraExecutor::_on_batch_diagnostics_complete);
     godot::ClassDB::bind_method(
         godot::D_METHOD("_scrape_configuration_warnings"),
         &FennaraExecutor::_scrape_configuration_warnings);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("_on_screenshot_scene_opened"),
+        godot::D_METHOD("_on_screenshot_scene_opened", "batch_generation"),
         &FennaraExecutor::_on_screenshot_scene_opened);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("_on_screenshot_capture"),
+        godot::D_METHOD("_on_screenshot_capture", "batch_generation"),
         &FennaraExecutor::_on_screenshot_capture);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("_on_validate_scene_complete"),
-        &FennaraExecutor::_on_validate_scene_complete);
-    godot::ClassDB::bind_method(
-        godot::D_METHOD("_on_runtime_script_check_complete"),
+        godot::D_METHOD("_on_runtime_script_check_complete", "batch_generation"),
         &FennaraExecutor::_on_runtime_script_check_complete);
 
     ADD_SIGNAL(godot::MethodInfo(
@@ -58,6 +55,8 @@ FennaraExecutor::FennaraExecutor() {
 }
 
 FennaraExecutor::~FennaraExecutor() {
+    _cancel_active_async_tools();
+    _validate_scene_runtime_cancelled.store(true);
     if (_batch_diag_thread.joinable()) {
         _batch_diag_thread.join();
     }
@@ -66,6 +65,9 @@ FennaraExecutor::~FennaraExecutor() {
     }
     if (_runtime_script_thread.joinable()) {
         _runtime_script_thread.join();
+    }
+    if (_runtime_session_thread.joinable()) {
+        _runtime_session_thread.join();
     }
 }
 

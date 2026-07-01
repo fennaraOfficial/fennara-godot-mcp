@@ -16,6 +16,7 @@
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 
@@ -78,8 +79,16 @@ godot::String resolve_godot_executable() {
 
 godot::Dictionary post_local_daemon_json(const godot::String &path,
                                          const godot::Dictionary &payload,
-                                         int timeout_ms) {
+                                         int timeout_ms,
+                                         const std::atomic_bool *cancelled) {
     godot::Dictionary result;
+    if (cancelled != nullptr && cancelled->load()) {
+        result["success"] = false;
+        result["status"] = "cancelled";
+        result["error"] = "Runtime validation cancelled.";
+        return result;
+    }
+
     godot::Ref<godot::HTTPClient> http;
     http.instantiate();
     if (http.is_null()) {
@@ -104,6 +113,13 @@ godot::Dictionary post_local_daemon_json(const godot::String &path,
     godot::String response_body;
 
     while (now_ms() < deadline) {
+        if (cancelled != nullptr && cancelled->load()) {
+            result["success"] = false;
+            result["status"] = "cancelled";
+            result["error"] = "Runtime validation cancelled.";
+            return result;
+        }
+
         http->poll();
         godot::HTTPClient::Status status = http->get_status();
         if (status == godot::HTTPClient::STATUS_CANT_RESOLVE ||
@@ -162,7 +178,8 @@ godot::Dictionary post_local_daemon_json(const godot::String &path,
 }
 
 godot::Dictionary run_runtime_batch(const godot::Array &scene_paths,
-                                    const godot::String &artifact_dir_res) {
+                                    const godot::String &artifact_dir_res,
+                                    const std::atomic_bool *cancelled) {
     godot::Dictionary result;
     if (scene_paths.is_empty()) {
         result["success"] = true;
@@ -189,12 +206,36 @@ godot::Dictionary run_runtime_batch(const godot::Array &scene_paths,
          20.0) *
         1000.0);
     godot::Dictionary daemon =
-        post_local_daemon_json(kRunGodotScenesBatchPath, payload, timeout_ms);
+        post_local_daemon_json(
+            kRunGodotScenesBatchPath, payload, timeout_ms, cancelled);
     daemon["artifact_dir_res_path"] = artifact_dir_res;
     daemon["artifact_dir_abs_path"] = artifact_dir_abs;
     daemon["run_seconds"] = kRuntimeRunSeconds;
     daemon["worker_count"] = kRuntimeWorkers;
     return daemon;
+}
+
+bool runtime_batch_failed(const godot::Dictionary &runtime_batch,
+                          bool skip_runtime) {
+    if (skip_runtime || (bool)runtime_batch.get("skipped", false)) {
+        return false;
+    }
+    bool runtime_success = runtime_batch.get("success", false);
+    int runtime_crashes = static_cast<int>(runtime_batch.get("crash_count", 0));
+    int runtime_errors = static_cast<int>(runtime_batch.get("error_count", 0));
+    return !runtime_success || runtime_crashes > 0 || runtime_errors > 0;
+}
+
+godot::String validation_status(int success_count,
+                                int failure_count,
+                                bool runtime_failed) {
+    if (failure_count == 0 && !runtime_failed) {
+        return "success";
+    }
+    if (success_count == 0) {
+        return "failed";
+    }
+    return "partial";
 }
 
 godot::String runtime_artifact_user_path(const godot::String &abs_path,
@@ -217,6 +258,303 @@ void FennaraValidateSceneTool::_bind_methods() {
         "FennaraValidateSceneTool",
         godot::D_METHOD("execute", "args"),
         &FennaraValidateSceneTool::execute);
+}
+
+godot::Dictionary FennaraValidateSceneTool::validate_scene_item(
+    const godot::Variant &item, int index) {
+    if (item.get_type() != godot::Variant::STRING) {
+        godot::Dictionary item_result;
+        item_result["status"] = "failed";
+        item_result["scene_path"] = "";
+        item_result["error"] =
+            "scene_paths[" + godot::String::num_int64(index) +
+            "] must be a string";
+        return item_result;
+    }
+
+    godot::Dictionary item_result;
+    godot::String scene_path = normalize_path(item);
+
+    FLOG_TOOL(godot::String("validate_scene: path=") + scene_path);
+
+    if (!godot::FileAccess::file_exists(scene_path)) {
+        item_result["status"] = "failed";
+        item_result["scene_path"] = scene_path;
+        item_result["error"] = "Scene file not found: " + scene_path;
+        return item_result;
+    }
+
+    godot::Array issues;
+    FennaraValidateSceneTool::_check_missing_ext_resources(scene_path, issues);
+    FennaraValidateSceneTool::_check_cyclic_dependencies(scene_path, issues);
+
+    godot::Ref<godot::PackedScene> packed =
+        scene_io::load_packed_scene(
+            scene_path, godot::ResourceLoader::CACHE_MODE_IGNORE);
+    godot::Ref<godot::SceneState> state;
+    if (packed.is_valid()) {
+        state = packed->get_state();
+    }
+    if (!state.is_valid()) {
+        if (!issues.is_empty()) {
+            int errors = 0;
+            int warnings = 0;
+            for (int i = 0; i < issues.size(); i++) {
+                godot::Dictionary issue = issues[i];
+                godot::String sev = issue.get("severity", "");
+                if (sev == "error") errors++;
+                else if (sev == "warning") warnings++;
+            }
+
+            godot::Dictionary issue_summary;
+            issue_summary["checks_run"] = 2;
+            issue_summary["total_issues"] = issues.size();
+            issue_summary["errors"] = errors;
+            issue_summary["warnings"] = warnings;
+
+            item_result["status"] = "success";
+            item_result["scene_path"] = scene_path;
+            item_result["issues"] = issues;
+            item_result["issue_summary"] = issue_summary;
+            item_result["checks_run"] = 2;
+            item_result["total_issues"] = issues.size();
+            item_result["errors"] = errors;
+            item_result["warnings"] = warnings;
+            return item_result;
+        }
+
+        item_result["status"] = "failed";
+        item_result["scene_path"] = scene_path;
+        item_result["error"] = "Failed to load scene: " + scene_path;
+        return item_result;
+    }
+
+    FennaraValidateSceneTool::_check_script_extends_mismatch(state, issues);
+    FennaraValidateSceneTool::_check_unset_export_vars(state, issues);
+    FennaraValidateSceneTool::_check_invalid_node_paths(scene_path, issues);
+    FennaraValidateSceneTool::_check_script_node_references(scene_path, issues);
+    FennaraValidateSceneTool::_check_duplicate_siblings(scene_path, issues);
+
+    int errors = 0;
+    int warnings = 0;
+    for (int i = 0; i < issues.size(); i++) {
+        godot::Dictionary issue = issues[i];
+        godot::String sev = issue.get("severity", "");
+        if (sev == "error") errors++;
+        else if (sev == "warning") warnings++;
+    }
+
+    godot::Dictionary issue_summary;
+    issue_summary["checks_run"] = 7;
+    issue_summary["total_issues"] = issues.size();
+    issue_summary["errors"] = errors;
+    issue_summary["warnings"] = warnings;
+
+    item_result["status"] = "success";
+    item_result["scene_path"] = scene_path;
+    item_result["issues"] = issues;
+    item_result["issue_summary"] = issue_summary;
+    item_result["checks_run"] = 7;
+    item_result["total_issues"] = issues.size();
+    item_result["errors"] = errors;
+    item_result["warnings"] = warnings;
+
+    FLOG_TOOL(godot::String("validate_scene: done, issues=") +
+              godot::String::num_int64(issues.size()) +
+              " errors=" + godot::String::num_int64(errors) +
+              " warnings=" + godot::String::num_int64(warnings));
+    return item_result;
+}
+
+bool FennaraValidateSceneTool::is_runtime_eligible_scene(
+    const godot::Dictionary &scene_result) {
+    return godot::String(scene_result.get("status", "")) == "success" &&
+           static_cast<int>(scene_result.get("errors", 0)) == 0;
+}
+
+godot::Dictionary FennaraValidateSceneTool::run_runtime_checks_for_scenes(
+    const godot::Dictionary &args,
+    const godot::Array &runtime_eligible_scene_paths,
+    const std::atomic_bool *cancelled) {
+    bool skip_runtime = args.get("skip_runtime", false);
+    godot::String artifact_dir =
+        godot::String(args.get("_fennara_tool_artifact_dir", "")).strip_edges();
+    godot::String validate_artifact_dir_res = artifact_dir.is_empty()
+        ? godot::String("user://.fennara/tool_logs/manual/validate_scene")
+              .path_join(make_runtime_check_id())
+        : artifact_dir.path_join("validate_scene");
+    godot::String runtime_run_dir_res = validate_artifact_dir_res.path_join("runtime");
+
+    godot::Dictionary runtime_batch;
+    if (skip_runtime) {
+        runtime_batch["success"] = true;
+        runtime_batch["skipped"] = true;
+        runtime_batch["status"] = "skipped";
+        runtime_batch["reason"] = "Runtime checks skipped by caller.";
+        runtime_batch["results"] = godot::Array();
+    } else {
+        runtime_batch =
+            run_runtime_batch(
+                runtime_eligible_scene_paths, runtime_run_dir_res, cancelled);
+    }
+    runtime_batch["validate_artifact_dir_res_path"] = validate_artifact_dir_res;
+    runtime_batch["validate_artifact_dir_abs_path"] =
+        user_abs_path(validate_artifact_dir_res);
+    return runtime_batch;
+}
+
+godot::Dictionary FennaraValidateSceneTool::build_result_from_scenes(
+    const godot::Dictionary &args,
+    const godot::Array &scene_paths,
+    const godot::Array &scenes,
+    const godot::Dictionary &runtime_batch) {
+    godot::Dictionary result;
+    bool skip_runtime = args.get("skip_runtime", false);
+
+    godot::String artifact_dir =
+        godot::String(args.get("_fennara_tool_artifact_dir", "")).strip_edges();
+    godot::String validate_artifact_dir_res = artifact_dir.is_empty()
+        ? godot::String("user://.fennara/tool_logs/manual/validate_scene")
+              .path_join(make_runtime_check_id())
+        : artifact_dir.path_join("validate_scene");
+    validate_artifact_dir_res = runtime_batch.get(
+        "validate_artifact_dir_res_path", validate_artifact_dir_res);
+    godot::String validate_artifact_dir_abs = runtime_batch.get(
+        "validate_artifact_dir_abs_path", user_abs_path(validate_artifact_dir_res));
+    godot::String runtime_run_dir_res = validate_artifact_dir_res.path_join("runtime");
+
+    godot::Array final_scenes = scenes.duplicate();
+    godot::Dictionary runtime_by_scene;
+    godot::Array runtime_results = runtime_batch.get("results", godot::Array());
+    godot::String runtime_artifact_abs = runtime_batch.get("artifact_dir_abs_path", "");
+    for (int i = 0; i < runtime_results.size(); i++) {
+        if (runtime_results[i].get_type() != godot::Variant::DICTIONARY) {
+            continue;
+        }
+        godot::Dictionary runtime = runtime_results[i];
+        runtime["raw_log_user_path"] = runtime_artifact_user_path(
+            runtime.get("raw_log_path", ""), runtime_artifact_abs, runtime_run_dir_res);
+        runtime["compacted_log_user_path"] = runtime_artifact_user_path(
+            runtime.get("compacted_log_path", ""), runtime_artifact_abs, runtime_run_dir_res);
+        godot::String scene_path = runtime.get("scene_path", "");
+        if (!scene_path.is_empty()) {
+            runtime_by_scene[scene_path] = runtime;
+        }
+    }
+    for (int i = 0; i < final_scenes.size(); i++) {
+        if (final_scenes[i].get_type() != godot::Variant::DICTIONARY) {
+            continue;
+        }
+        godot::Dictionary scene = final_scenes[i];
+        godot::String scene_path = scene.get("scene_path", "");
+        if (runtime_by_scene.has(scene_path)) {
+            scene["runtime_check"] = runtime_by_scene[scene_path];
+            final_scenes[i] = scene;
+        } else if (godot::String(scene.get("status", "")) == "success" &&
+                   static_cast<int>(scene.get("errors", 0)) == 0 &&
+                   !(bool)runtime_batch.get("success", false)) {
+            scene["runtime_check"] = "failed";
+            scene["runtime_error"] = runtime_batch.get("error", "Runtime batch failed.");
+            final_scenes[i] = scene;
+        }
+    }
+
+    int success_count = 0;
+    int failure_count = 0;
+    int total_issues = 0;
+    int errors = 0;
+    int warnings = 0;
+    int checks_run = 0;
+    int runtime_checked_count = 0;
+    for (int i = 0; i < final_scenes.size(); i++) {
+        if (final_scenes[i].get_type() != godot::Variant::DICTIONARY) {
+            failure_count++;
+            continue;
+        }
+        godot::Dictionary scene = final_scenes[i];
+        if (godot::String(scene.get("status", "")) == "success") {
+            success_count++;
+            total_issues += static_cast<int>(scene.get("total_issues", 0));
+            errors += static_cast<int>(scene.get("errors", 0));
+            warnings += static_cast<int>(scene.get("warnings", 0));
+            checks_run += static_cast<int>(scene.get("checks_run", 0));
+            if (is_runtime_eligible_scene(scene)) {
+                runtime_checked_count++;
+            }
+        } else {
+            failure_count++;
+        }
+    }
+
+    bool runtime_failed = runtime_batch_failed(runtime_batch, skip_runtime);
+
+    godot::Dictionary summary;
+    summary["status"] =
+        validation_status(success_count, failure_count, runtime_failed);
+    summary["requested_count"] = scene_paths.size();
+    summary["checked_count"] = final_scenes.size();
+    summary["success_count"] = success_count;
+    summary["failure_count"] = failure_count;
+    summary["total_issues"] = total_issues;
+    summary["errors"] = errors;
+    summary["warnings"] = warnings;
+    summary["checks_run"] = checks_run;
+    summary["runtime_checked_count"] = runtime_checked_count;
+    summary["runtime_skipped"] =
+        skip_runtime || (bool)runtime_batch.get("skipped", false);
+    summary["runtime_failed"] = runtime_failed;
+    bool runtime_success = runtime_batch.get("success", false);
+    summary["runtime_status"] = runtime_batch.get("status", runtime_success ? "success" : "failed");
+    summary["runtime_crash_count"] = runtime_batch.get("crash_count", 0);
+    summary["runtime_error_count"] = runtime_batch.get("error_count", 0);
+    summary["runtime_warning_count"] = runtime_batch.get("warning_count", 0);
+    summary["runtime_compacted_log_path"] = runtime_artifact_user_path(
+        runtime_batch.get("compacted_log_path", ""), runtime_artifact_abs, runtime_run_dir_res);
+    summary["runtime_compacted_log_absolute_path"] =
+        runtime_batch.get("compacted_log_path", "");
+    summary["runtime_results_path"] = runtime_artifact_user_path(
+        runtime_batch.get("results_path", ""), runtime_artifact_abs, runtime_run_dir_res);
+    summary["runtime_results_absolute_path"] = runtime_batch.get("results_path", "");
+    summary["runtime_raw_logs_dir"] = runtime_artifact_user_path(
+        runtime_batch.get("raw_logs_dir", ""), runtime_artifact_abs, runtime_run_dir_res);
+    summary["runtime_raw_logs_absolute_dir"] = runtime_batch.get("raw_logs_dir", "");
+    summary["artifact_dir"] = validate_artifact_dir_res;
+    summary["artifact_absolute_dir"] = validate_artifact_dir_abs;
+
+    result["success"] = failure_count == 0 && !runtime_failed;
+    result["tool_name"] = "validate_scene";
+    result["format_version"] = "validate-scene-result-v1";
+    result["summary"] = summary;
+    result["scenes"] = final_scenes;
+    result["runtime_batch"] = runtime_batch;
+    result["artifact_dir"] = validate_artifact_dir_res;
+    result["artifact_absolute_dir"] = validate_artifact_dir_abs;
+
+    if (!(bool)result["success"]) {
+        if (runtime_failed) {
+            result["error"] = godot::String("Runtime validation failed: ") +
+                godot::String(runtime_batch.get("error", summary["runtime_status"]));
+        } else if (failure_count == final_scenes.size()) {
+            result["error"] = "Failed to validate requested scene(s)";
+        } else {
+            result["error"] = "Some scene(s) could not be validated";
+        }
+    }
+
+    godot::DirAccess::make_dir_recursive_absolute(validate_artifact_dir_abs);
+    godot::String result_json_abs =
+        validate_artifact_dir_abs.path_join("validate_scene_result.json");
+    godot::Ref<godot::FileAccess> result_file =
+        godot::FileAccess::open(result_json_abs, godot::FileAccess::WRITE);
+    if (result_file.is_valid()) {
+        summary["result_json_path"] =
+            validate_artifact_dir_res.path_join("validate_scene_result.json");
+        summary["result_json_absolute_path"] = result_json_abs;
+        result["summary"] = summary;
+        result_file->store_string(godot::JSON::stringify(result, "\t"));
+        result_file->store_string("\n");
+    }
+    return result;
 }
 
 godot::Dictionary FennaraValidateSceneTool::execute(const godot::Dictionary &args) {
@@ -396,126 +734,13 @@ godot::Dictionary FennaraValidateSceneTool::execute(const godot::Dictionary &arg
         runtime_batch["reason"] = "Runtime checks skipped by caller.";
         runtime_batch["results"] = godot::Array();
     } else {
-        runtime_batch = run_runtime_batch(runtime_eligible_scene_paths, runtime_run_dir_res);
+        runtime_batch =
+            run_runtime_batch(runtime_eligible_scene_paths, runtime_run_dir_res, nullptr);
     }
-    godot::Dictionary runtime_by_scene;
-    godot::Array runtime_results = runtime_batch.get("results", godot::Array());
-    godot::String runtime_artifact_abs = runtime_batch.get("artifact_dir_abs_path", "");
-    for (int i = 0; i < runtime_results.size(); i++) {
-        if (runtime_results[i].get_type() != godot::Variant::DICTIONARY) {
-            continue;
-        }
-        godot::Dictionary runtime = runtime_results[i];
-        runtime["raw_log_user_path"] = runtime_artifact_user_path(
-            runtime.get("raw_log_path", ""), runtime_artifact_abs, runtime_run_dir_res);
-        runtime["compacted_log_user_path"] = runtime_artifact_user_path(
-            runtime.get("compacted_log_path", ""), runtime_artifact_abs, runtime_run_dir_res);
-        godot::String scene_path = runtime.get("scene_path", "");
-        if (!scene_path.is_empty()) {
-            runtime_by_scene[scene_path] = runtime;
-        }
-    }
-    for (int i = 0; i < scenes.size(); i++) {
-        if (scenes[i].get_type() != godot::Variant::DICTIONARY) {
-            continue;
-        }
-        godot::Dictionary scene = scenes[i];
-        godot::String scene_path = scene.get("scene_path", "");
-        if (runtime_by_scene.has(scene_path)) {
-            scene["runtime_check"] = runtime_by_scene[scene_path];
-            scenes[i] = scene;
-        } else if (godot::String(scene.get("status", "")) == "success" &&
-                   static_cast<int>(scene.get("errors", 0)) == 0 &&
-                   !(bool)runtime_batch.get("success", false)) {
-            scene["runtime_check"] = "failed";
-            scene["runtime_error"] = runtime_batch.get("error", "Runtime batch failed.");
-            scenes[i] = scene;
-        }
-    }
+    runtime_batch["validate_artifact_dir_res_path"] = validate_artifact_dir_res;
+    runtime_batch["validate_artifact_dir_abs_path"] = validate_artifact_dir_abs;
 
-    int success_count = 0;
-    int failure_count = 0;
-    int total_issues = 0;
-    int errors = 0;
-    int warnings = 0;
-    int checks_run = 0;
-    for (int i = 0; i < scenes.size(); i++) {
-        if (scenes[i].get_type() != godot::Variant::DICTIONARY) {
-            failure_count++;
-            continue;
-        }
-        godot::Dictionary scene = scenes[i];
-        if (godot::String(scene.get("status", "")) == "success") {
-            success_count++;
-            total_issues += static_cast<int>(scene.get("total_issues", 0));
-            errors += static_cast<int>(scene.get("errors", 0));
-            warnings += static_cast<int>(scene.get("warnings", 0));
-            checks_run += static_cast<int>(scene.get("checks_run", 0));
-        } else {
-            failure_count++;
-        }
-    }
-
-    godot::Dictionary summary;
-    summary["status"] = failure_count == 0 ? "success" :
-        (success_count == 0 ? "failed" : "partial");
-    summary["requested_count"] = scene_paths.size();
-    summary["checked_count"] = scenes.size();
-    summary["success_count"] = success_count;
-    summary["failure_count"] = failure_count;
-    summary["total_issues"] = total_issues;
-    summary["errors"] = errors;
-    summary["warnings"] = warnings;
-    summary["checks_run"] = checks_run;
-    summary["runtime_checked_count"] = runtime_eligible_scene_paths.size();
-    summary["runtime_skipped"] = skip_runtime;
-    bool runtime_success = runtime_batch.get("success", false);
-    summary["runtime_status"] = runtime_batch.get("status", runtime_success ? "success" : "failed");
-    summary["runtime_crash_count"] = runtime_batch.get("crash_count", 0);
-    summary["runtime_error_count"] = runtime_batch.get("error_count", 0);
-    summary["runtime_warning_count"] = runtime_batch.get("warning_count", 0);
-    summary["runtime_compacted_log_path"] = runtime_artifact_user_path(
-        runtime_batch.get("compacted_log_path", ""), runtime_artifact_abs, runtime_run_dir_res);
-    summary["runtime_compacted_log_absolute_path"] =
-        runtime_batch.get("compacted_log_path", "");
-    summary["runtime_results_path"] = runtime_artifact_user_path(
-        runtime_batch.get("results_path", ""), runtime_artifact_abs, runtime_run_dir_res);
-    summary["runtime_results_absolute_path"] = runtime_batch.get("results_path", "");
-    summary["runtime_raw_logs_dir"] = runtime_artifact_user_path(
-        runtime_batch.get("raw_logs_dir", ""), runtime_artifact_abs, runtime_run_dir_res);
-    summary["runtime_raw_logs_absolute_dir"] = runtime_batch.get("raw_logs_dir", "");
-    summary["artifact_dir"] = validate_artifact_dir_res;
-    summary["artifact_absolute_dir"] = validate_artifact_dir_abs;
-
-    result["success"] = failure_count == 0;
-    result["tool_name"] = "validate_scene";
-    result["format_version"] = "validate-scene-result-v1";
-    result["summary"] = summary;
-    result["scenes"] = scenes;
-    result["runtime_batch"] = runtime_batch;
-    result["artifact_dir"] = validate_artifact_dir_res;
-    result["artifact_absolute_dir"] = validate_artifact_dir_abs;
-
-    if (!(bool)result["success"]) {
-        result["error"] = failure_count == scenes.size()
-            ? "Failed to validate requested scene(s)"
-            : "Some scene(s) could not be validated";
-    }
-
-    godot::DirAccess::make_dir_recursive_absolute(validate_artifact_dir_abs);
-    godot::String result_json_abs =
-        validate_artifact_dir_abs.path_join("validate_scene_result.json");
-    godot::Ref<godot::FileAccess> result_file =
-        godot::FileAccess::open(result_json_abs, godot::FileAccess::WRITE);
-    if (result_file.is_valid()) {
-        summary["result_json_path"] =
-            validate_artifact_dir_res.path_join("validate_scene_result.json");
-        summary["result_json_absolute_path"] = result_json_abs;
-        result["summary"] = summary;
-        result_file->store_string(godot::JSON::stringify(result, "\t"));
-        result_file->store_string("\n");
-    }
-    return result;
+    return build_result_from_scenes(args, scene_paths, scenes, runtime_batch);
 }
 
 godot::String FennaraValidateSceneTool::_build_node_path(

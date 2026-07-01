@@ -88,7 +88,7 @@ void FennaraExecutor::_track_modified_scene(const godot::String &scene_path,
     _modified_scenes.push_back({scene_path, tool_index});
 }
 
-void FennaraExecutor::_run_batch_diagnostics() {
+void FennaraExecutor::_run_batch_diagnostics(uint64_t batch_generation) {
     godot::Dictionary per_file_results;
     bool batch_success = false;
     godot::String batch_error;
@@ -207,15 +207,15 @@ done:
         diag_done["error"] = batch_error;
     }
     _log_tool_event("Batch diagnostics finished", diag_done);
-    call_deferred("_on_batch_diagnostics_complete");
+    call_deferred("_on_batch_diagnostics_complete", batch_generation);
 }
 
-void FennaraExecutor::_on_batch_diagnostics_complete() {
+void FennaraExecutor::_on_batch_diagnostics_complete(uint64_t batch_generation) {
     if (_batch_diag_thread.joinable()) {
         _batch_diag_thread.join();
     }
 
-    if (_batch_cancelled) {
+    if (_batch_cancelled || batch_generation != _async_batch_generation) {
         _pending_script_writes.clear();
         _pending_run_scene_edit_scripts.clear();
         _batch_diag_results = godot::Dictionary();
@@ -268,7 +268,7 @@ void FennaraExecutor::_on_batch_diagnostics_complete() {
         summary["diagnostic_count"] = merged.get("total_diagnostics", 0);
         merged["summary"] = summary;
 
-        _on_async_tool_complete(merged, pw.tool_index, "write_or_update_file", pw.tool_args);
+        _on_async_tool_complete(merged, pw.tool_index, "write_or_update_file", pw.tool_args, batch_generation);
     }
 
     _pending_script_writes.clear();
@@ -302,7 +302,7 @@ void FennaraExecutor::_on_batch_diagnostics_complete() {
                     _maybe_append_scene_validation(executed, scene_path);
                 }
             }
-            _on_async_tool_complete(executed, pending.tool_index, "run_scene_edit_script");
+            _on_async_tool_complete(executed, pending.tool_index, "run_scene_edit_script", godot::Dictionary(), batch_generation);
             continue;
         }
 
@@ -313,7 +313,7 @@ void FennaraExecutor::_on_batch_diagnostics_complete() {
             merged["error"] = "Script diagnostics reported errors. Patch the saved script_path and rerun.";
             merged["runtime_errors"] = godot::Array();
             merged["logs"] = godot::Array();
-            _on_async_tool_complete(merged, pending.tool_index, "run_scene_edit_script");
+            _on_async_tool_complete(merged, pending.tool_index, "run_scene_edit_script", godot::Dictionary(), batch_generation);
             continue;
         }
 
@@ -326,7 +326,7 @@ void FennaraExecutor::_on_batch_diagnostics_complete() {
                 _maybe_append_scene_validation(executed, scene_path);
             }
         }
-        _on_async_tool_complete(executed, pending.tool_index, "run_scene_edit_script");
+        _on_async_tool_complete(executed, pending.tool_index, "run_scene_edit_script", godot::Dictionary(), batch_generation);
     }
 
     _pending_run_scene_edit_scripts.clear();

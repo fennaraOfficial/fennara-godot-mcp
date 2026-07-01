@@ -79,7 +79,7 @@ Then open the project in Godot.
 
 ```text
 AGENTS.md
-.fennara/ai/guidelines.md
+addons/fennara/ai/guidelines.md
 ```
 
 ### 3. Configure Your MCP App

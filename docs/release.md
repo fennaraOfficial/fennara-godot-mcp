@@ -324,7 +324,7 @@ Check that the project received:
 
 ```text
 AGENTS.md
-.fennara/ai/guidelines.md
+addons/fennara/ai/guidelines.md
 ```
 
 Open the project in Godot, then ask the MCP app:

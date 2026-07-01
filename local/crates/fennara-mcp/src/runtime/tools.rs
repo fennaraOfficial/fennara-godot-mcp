@@ -43,7 +43,7 @@ pub(crate) fn handle_tool_call(id: Value, params: Option<&Value>) -> Value {
                 }),
             };
             let is_error = result.get("ok").and_then(Value::as_bool) == Some(false);
-            success_response(id, tool_result_with_error(result, is_error))
+            success_response(id, forwarded_tool_result(name, &result, is_error))
         }
         Some(name) => error_response(id, -32602, format!("Unknown tool: {name}")),
         None => error_response(id, -32602, "Missing tool name".to_string()),
@@ -71,10 +71,10 @@ fn status_payload() -> Value {
 }
 
 fn tool_result(payload: Value) -> Value {
-    tool_result_with_error(payload, false)
+    json_tool_result_with_error(payload, false)
 }
 
-fn tool_result_with_error(payload: Value, is_error: bool) -> Value {
+fn json_tool_result_with_error(payload: Value, is_error: bool) -> Value {
     json!({
         "content": [
             {
@@ -85,4 +85,86 @@ fn tool_result_with_error(payload: Value, is_error: bool) -> Value {
         "structuredContent": payload,
         "isError": is_error
     })
+}
+
+fn forwarded_tool_result(tool_name: &str, response: &Value, is_error: bool) -> Value {
+    json!({
+        "content": [
+            {
+                "type": "text",
+                "text": text_from_plugin_result(tool_name, response)
+            }
+        ],
+        "isError": is_error
+    })
+}
+
+fn text_from_plugin_result(tool_name: &str, response: &Value) -> String {
+    if let Some(result) = response.get("result") {
+        if let Some(text) = result.as_str() {
+            return text.to_string();
+        }
+        if !result.is_null() {
+            return result.to_string();
+        }
+    }
+
+    if let Some(error) = response.get("error").and_then(Value::as_str) {
+        return format!("Tool: {tool_name}\nStatus: failed\nError: {error}");
+    }
+
+    format!("Tool: {tool_name}\nStatus: failed\nError: Tool returned an unsupported result shape.")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forwarded_tool_result_sends_only_plugin_result() {
+        let response = json!({
+            "ok": true,
+            "result": "Tool: validate_scene\nStatus: success",
+            "formatted_result": {
+                "content": "wrong layer",
+                "metadata": {
+                    "tool_name": "validate_scene"
+                }
+            },
+            "raw_result": {
+                "scenes": [
+                    { "scene_path": "res://huge.tscn", "issues": [{ "message": "raw detail" }] }
+                ]
+            },
+            "request_id": "local-tool-1",
+            "type": "tool_result"
+        });
+
+        let result = forwarded_tool_result("validate_scene", &response, false);
+
+        assert_eq!(
+            result["content"][0]["text"],
+            "Tool: validate_scene\nStatus: success"
+        );
+        assert!(result.get("structuredContent").is_none());
+        assert!(!result.to_string().contains("wrong layer"));
+        assert!(!result.to_string().contains("raw detail"));
+        assert!(!result.to_string().contains("raw_result"));
+    }
+
+    #[test]
+    fn forwarded_tool_result_reports_bridge_error_when_plugin_result_is_missing() {
+        let response = json!({
+            "ok": false,
+            "error": "Godot plugin disconnected before returning a tool result."
+        });
+
+        let result = forwarded_tool_result("project_settings", &response, true);
+
+        assert_eq!(
+            result["content"][0]["text"],
+            "Tool: project_settings\nStatus: failed\nError: Godot plugin disconnected before returning a tool result."
+        );
+        assert_eq!(result["isError"], true);
+    }
 }

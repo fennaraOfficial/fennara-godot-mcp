@@ -214,6 +214,14 @@ godot::Dictionary format_script_diagnostics(const godot::Dictionary &args,
                       godot::String(", ").join(paths));
     }
     header.append("Totals: " + totals_text(summary));
+    if ((bool)summary.get("scene_load_skipped", false)) {
+        header.append("Scene-load diagnostics: skipped");
+        header.append("Skip reason: " + godot::String(summary.get(
+            "scene_load_skip_reason", "Scene-load diagnostics were skipped.")));
+        header.append("May miss: " + godot::String(summary.get(
+            "scene_load_may_miss",
+            "Errors that only occur when scripts are loaded through scenes may be missed.")));
+    }
     if (scan_project) {
         header.append("Clean files: " + godot::String::num_int64(clean_files));
         header.append("Files with diagnostics: " + godot::String::num_int64(diagnostic_files));

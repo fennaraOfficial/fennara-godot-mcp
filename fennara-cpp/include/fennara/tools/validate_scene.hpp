@@ -8,6 +8,8 @@
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/string_name.hpp>
 
+#include <atomic>
+
 namespace fennara {
 
 class FennaraValidateSceneTool : public godot::RefCounted {
@@ -18,6 +20,19 @@ protected:
 
 public:
     static godot::Dictionary execute(const godot::Dictionary &args);
+    static godot::Dictionary validate_scene_item(const godot::Variant &item,
+                                                 int index);
+    static bool is_runtime_eligible_scene(
+        const godot::Dictionary &scene_result);
+    static godot::Dictionary run_runtime_checks_for_scenes(
+        const godot::Dictionary &args,
+        const godot::Array &runtime_eligible_scene_paths,
+        const std::atomic_bool *cancelled = nullptr);
+    static godot::Dictionary build_result_from_scenes(
+        const godot::Dictionary &args,
+        const godot::Array &scene_paths,
+        const godot::Array &scenes,
+        const godot::Dictionary &runtime_batch);
 
 private:
     // Individual check functions — each appends to `issues` Array

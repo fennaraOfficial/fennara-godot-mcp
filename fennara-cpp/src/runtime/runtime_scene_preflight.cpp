@@ -159,7 +159,7 @@ godot::Dictionary make_result() {
 
 } // namespace
 
-godot::Dictionary check_scene_scripts(const godot::String &scene_path) {
+godot::Dictionary collect_scene_script_context(const godot::String &scene_path) {
     godot::Dictionary result = make_result();
     result["scene_path"] = scene_path;
 
@@ -180,6 +180,12 @@ godot::Dictionary check_scene_scripts(const godot::String &scene_path) {
     result["dependency_scenes"] = dependency_scenes;
     result["checked_script_count"] = checked_scripts.size();
 
+    return result;
+}
+
+godot::Dictionary diagnose_collected_scripts(const godot::Dictionary &context) {
+    godot::Dictionary result = context.duplicate();
+    godot::Array checked_scripts = result.get("checked_scripts", godot::Array());
     godot::Array files_to_check = resolved_paths(checked_scripts);
     if (files_to_check.is_empty()) {
         return result;
@@ -224,6 +230,10 @@ godot::Dictionary check_scene_scripts(const godot::String &scene_path) {
         result["error"] = "Scene/autoload script diagnostics have errors.";
     }
     return result;
+}
+
+godot::Dictionary check_scene_scripts(const godot::String &scene_path) {
+    return diagnose_collected_scripts(collect_scene_script_context(scene_path));
 }
 
 } // namespace fennara::runtime_scene_preflight

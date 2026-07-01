@@ -25,6 +25,8 @@ namespace {
 
 constexpr int kMaxBatchFiles = 5;
 constexpr const char *kResultVersion = "read-file-result-v1";
+constexpr const char *kFennaraGuidelinesPath =
+    "res://addons/fennara/ai/guidelines.md";
 
 godot::String extension_of(const godot::String &path) {
     int dot = path.rfind(".");
@@ -122,6 +124,10 @@ godot::Dictionary make_argument_error(const godot::String &message) {
     result["files"] = files;
     result["error"] = message;
     return result;
+}
+
+bool is_fennara_guidelines_path(const godot::String &path) {
+    return path == godot::String(kFennaraGuidelinesPath);
 }
 
 std::filesystem::path native_path_for(const godot::String &path) {
@@ -258,12 +264,15 @@ godot::Dictionary read_single_file(const godot::String &file_path,
     bool user_path = normalized.begins_with("user://");
     if (!user_path) {
         godot::Dictionary addon_block;
-        if (!addon_access::is_path_allowed(normalized, false, addon_block)) {
+        if (!is_fennara_guidelines_path(normalized) &&
+            !addon_access::is_path_allowed(normalized, false, addon_block)) {
             FLOG_ERR(godot::String("Read: blocked addon path ") + normalized);
             return make_blocked_file(addon_block);
         }
 
-        if (normalized != "res://project.godot" && is_protected_path(normalized)) {
+        if (normalized != "res://project.godot" &&
+            !is_fennara_guidelines_path(normalized) &&
+            is_protected_path(normalized)) {
             FLOG_ERR(godot::String("Read: protected path ") + file_path);
             return make_failed_file(normalized, protected_path_error(normalized));
         }

@@ -313,11 +313,26 @@ godot::Dictionary format_validate_scene(const godot::Dictionary &raw_result) {
             " warnings)"
         );
         if (summary.has("runtime_checked_count")) {
-            header.append(
-                "Runtime: ran " +
-                godot::String::num_int64(static_cast<int64_t>(summary.get("runtime_checked_count", 0))) +
-                " scenes headlessly for 3s each"
-            );
+            godot::String runtime_line = "Runtime: ";
+            if ((bool)summary.get("runtime_skipped", false)) {
+                runtime_line += "skipped";
+            } else {
+                runtime_line += godot::String(summary.get("runtime_status", "unknown")) +
+                    ", ran " +
+                    godot::String::num_int64(static_cast<int64_t>(summary.get("runtime_checked_count", 0))) +
+                    " scenes headlessly for 3s each";
+                int64_t runtime_crashes =
+                    static_cast<int64_t>(summary.get("runtime_crash_count", 0));
+                int64_t runtime_errors =
+                    static_cast<int64_t>(summary.get("runtime_error_count", 0));
+                int64_t runtime_warnings =
+                    static_cast<int64_t>(summary.get("runtime_warning_count", 0));
+                runtime_line += " (" +
+                    godot::String::num_int64(runtime_crashes) + " crashes, " +
+                    godot::String::num_int64(runtime_errors) + " errors, " +
+                    godot::String::num_int64(runtime_warnings) + " warnings)";
+            }
+            header.append(runtime_line);
         }
     }
     if (scenes.size() == 0 && raw_result.has("error")) {
@@ -480,13 +495,18 @@ godot::Dictionary format_validate_scene(const godot::Dictionary &raw_result) {
         sections.append(godot::String("\n").join(saved_lines));
     }
 
-    godot::String status = "success";
+    godot::String status = summary.get("status", "");
+    if (status.is_empty()) {
+        status = "success";
+    }
     if (scenes.size() == 0 && raw_result.has("error")) {
         status = "failed";
-    } else if (raw_failure_count > 0 && raw_success_count == 0) {
-        status = "failed";
-    } else if (raw_failure_count > 0 || previewed) {
-        status = "partial";
+    } else if (status == "success") {
+        if (raw_failure_count > 0 && raw_success_count == 0) {
+            status = "failed";
+        } else if (raw_failure_count > 0 || previewed) {
+            status = "partial";
+        }
     }
     header.set(1, "Status: " + status);
     sections.insert(0, godot::String("\n").join(header));
