@@ -76,6 +76,54 @@ godot::Dictionary s_scene_props_for_node(
     return scene_props;
 }
 
+bool s_is_identifier_char(char32_t c) {
+    return c == '_' ||
+           (c >= '0' && c <= '9') ||
+           (c >= 'A' && c <= 'Z') ||
+           (c >= 'a' && c <= 'z');
+}
+
+int s_count_identifier_mentions(const godot::String &text,
+                                const godot::String &identifier) {
+    if (text.is_empty() || identifier.is_empty()) {
+        return 0;
+    }
+
+    int count = 0;
+    int pos = 0;
+    while (true) {
+        pos = text.find(identifier, pos);
+        if (pos < 0) {
+            break;
+        }
+
+        int after_pos = pos + identifier.length();
+        bool has_identifier_before =
+            pos > 0 && s_is_identifier_char(text[pos - 1]);
+        bool has_identifier_after =
+            after_pos < text.length() && s_is_identifier_char(text[after_pos]);
+        if (!has_identifier_before && !has_identifier_after) {
+            count++;
+        }
+        pos = after_pos;
+    }
+    return count;
+}
+
+bool s_script_references_property_beyond_export(
+    const godot::String &script_path,
+    const godot::String &property_name) {
+    godot::Ref<godot::FileAccess> file =
+        godot::FileAccess::open(script_path, godot::FileAccess::READ);
+    if (!file.is_valid()) {
+        return false;
+    }
+
+    // Cheap signal: one occurrence is normally the export declaration; more
+    // occurrences mean the script likely reads or writes the property.
+    return s_count_identifier_mentions(file->get_as_text(), property_name) > 1;
+}
+
 } // namespace
 
 void FennaraValidateSceneTool::_check_script_extends_mismatch(
@@ -157,15 +205,31 @@ void FennaraValidateSceneTool::_check_unset_export_vars(
                 extra["instance_scene"] = instance_scene_path;
             }
 
-            godot::String message =
-                godot::String("Unset Resource export var '") +
-                prop_name + "' (type: " + type_label + ")";
+            bool referenced_in_script =
+                s_script_references_property_beyond_export(
+                    script_path, prop_name);
+            extra["referenced_in_script"] = referenced_in_script;
+
+            godot::String message;
+            godot::String severity = referenced_in_script ? "warning" : "info";
+            if (referenced_in_script) {
+                message = godot::String("Unset Resource export var '") +
+                    prop_name + "' (type: " + type_label + ")";
+            } else {
+                message = godot::String("Exported Resource var '") +
+                    prop_name + "' (type: " + type_label + ") is unset";
+            }
             if (!instance_scene_path.is_empty()) {
                 message += " inherited from instance " + instance_scene_path;
             }
-            message += " - will be null at runtime";
+            if (referenced_in_script) {
+                message +=
+                    " and referenced by the script; verify it is optional/null-guarded or assign it in the scene";
+            } else {
+                message += ". This is OK if optional or assigned at runtime";
+            }
             _add_issue(issues, _build_node_path(state, i),
-                       "unset_export_var", "warning",
+                       "unset_export_var", severity,
                        message,
                        extra);
         }

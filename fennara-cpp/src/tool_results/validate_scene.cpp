@@ -51,8 +51,11 @@ godot::Dictionary target_metadata(const godot::Dictionary &scene) {
     target["total_issues"] = scene.get("total_issues", 0);
     target["errors"] = scene.get("errors", 0);
     target["warnings"] = scene.get("warnings", 0);
+    target["notes"] = scene.get("notes", 0);
     target["shown_issues"] = 0;
-    target["omitted_issues"] = scene.get("total_issues", 0);
+    target["omitted_issues"] =
+        static_cast<int>(scene.get("total_issues", 0)) +
+        static_cast<int>(scene.get("notes", 0));
     if (scene.has("error")) {
         target["error"] = scene["error"];
     }
@@ -123,7 +126,13 @@ godot::Array issues_for_severity(const godot::Dictionary &scene,
 }
 
 godot::String severity_heading(const godot::String &severity) {
-    return severity == "error" ? "### Errors" : "### Warnings";
+    if (severity == "error") {
+        return "### Structural errors";
+    }
+    if (severity == "warning") {
+        return "### Structural warnings";
+    }
+    return "### Structural notes";
 }
 
 godot::String failed_section(const godot::Dictionary &scene, int index) {
@@ -335,7 +344,7 @@ godot::Dictionary format_validate_scene(const godot::Dictionary &raw_result) {
     header.append("Status: pending");
     header.append(scenes.size() > 0 ? "Scope: " + scope_for_scenes(scenes) : "Scope: unknown");
     if (!summary.is_empty()) {
-        header.append(
+        godot::String totals_line =
             "Totals: " +
             godot::String::num_int64(static_cast<int64_t>(summary.get("success_count", 0))) +
             " succeeded, " +
@@ -346,8 +355,13 @@ godot::Dictionary format_validate_scene(const godot::Dictionary &raw_result) {
             godot::String::num_int64(static_cast<int64_t>(summary.get("errors", 0))) +
             " errors, " +
             godot::String::num_int64(static_cast<int64_t>(summary.get("warnings", 0))) +
-            " warnings)"
-        );
+            " warnings)";
+        int64_t note_total =
+            static_cast<int64_t>(summary.get("notes", 0));
+        if (note_total > 0) {
+            totals_line += ", " + godot::String::num_int64(note_total) + " notes";
+        }
+        header.append(totals_line);
         if (summary.has("runtime_checked_count")) {
             godot::String runtime_line = "Runtime: ";
             if ((bool)summary.get("runtime_skipped", false)) {
@@ -421,6 +435,13 @@ godot::Dictionary format_validate_scene(const godot::Dictionary &raw_result) {
             " errors, " + godot::String::num_int64(static_cast<int64_t>(scene.get("warnings", 0))) +
             " warnings)"
         );
+        int note_count = static_cast<int>(scene.get("notes", 0));
+        if (note_count > 0) {
+            lines.append(
+                "Structural notes: " +
+                godot::String::num_int64(static_cast<int64_t>(note_count))
+            );
+        }
 
         int detail_budget = per_scene_budget - estimate_tokens(godot::String("\n").join(lines));
         if (detail_budget < 1) {
@@ -428,8 +449,9 @@ godot::Dictionary format_validate_scene(const godot::Dictionary &raw_result) {
         }
 
         int shown = 0;
-        for (int severity_index = 0; severity_index < 2; severity_index++) {
-            godot::String severity = severity_index == 0 ? "error" : "warning";
+        for (int severity_index = 0; severity_index < 3; severity_index++) {
+            godot::String severity = severity_index == 0 ? "error" :
+                (severity_index == 1 ? "warning" : "info");
             godot::Array issues = issues_for_severity(scene, severity);
             if (issues.is_empty()) {
                 continue;
@@ -450,21 +472,23 @@ godot::Dictionary format_validate_scene(const godot::Dictionary &raw_result) {
             }
             if (!bullets.is_empty()) {
                 lines.append("");
-                lines.append(severity == "error" ? "### Structural errors" : "### Structural warnings");
+                lines.append(severity_heading(severity));
                 lines.append(godot::String("\n").join(bullets));
             }
         }
 
         int total_issues = static_cast<int>(scene.get("total_issues", 0));
-        if (shown < total_issues) {
+        int total_reported_items = total_issues + note_count;
+        if (shown < total_reported_items) {
             previewed = true;
             lines.append("");
-            lines.append("Omitted: additional validation issues exceeded model-facing size limit.");
+            lines.append("Omitted: additional validation issues or notes exceeded model-facing size limit.");
         }
 
         godot::Dictionary target = targets[target_index];
         target["shown_issues"] = shown;
-        target["omitted_issues"] = total_issues > shown ? total_issues - shown : 0;
+        target["omitted_issues"] =
+            total_reported_items > shown ? total_reported_items - shown : 0;
         targets[target_index] = target;
 
         if (scene.has("runtime_check")) {

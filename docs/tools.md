@@ -339,9 +339,15 @@ Use this after scene edits or when checking scene/resource integrity. It accepts
 1 to 10 scene paths.
 
 Structural checks include missing scripts/resources, script extends mismatch,
-unset exported variables, invalid NodePath properties, invalid script
-`$Node`/`get_node()` references, duplicate sibling names, and cyclic scene
-dependencies.
+invalid NodePath properties, invalid script `$Node`/`get_node()` references,
+duplicate sibling names, cyclic scene dependencies, and unset exported
+Resource/Object variables.
+
+Unset exported Resource/Object variables are split by signal strength.
+Declaration-only unset exports are reported as structural notes because they may
+be optional or assigned at runtime. Unset exports referenced elsewhere in the
+script are structural warnings to verify/null-guard or assign; they are not
+automatic proof that a placeholder resource should be created.
 
 For scenes with zero structural errors, Fennara also runs each scene headlessly
 for exactly 3 seconds through the local daemon using up to 3 memory-throttled

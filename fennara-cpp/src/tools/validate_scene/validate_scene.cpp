@@ -238,6 +238,48 @@ godot::String validation_status(int success_count,
     return "partial";
 }
 
+godot::Dictionary issue_summary_for(const godot::Array &issues,
+                                    int checks_run) {
+    int errors = 0;
+    int warnings = 0;
+    int notes = 0;
+    for (int i = 0; i < issues.size(); i++) {
+        if (issues[i].get_type() != godot::Variant::DICTIONARY) {
+            continue;
+        }
+        godot::Dictionary issue = issues[i];
+        godot::String sev = issue.get("severity", "");
+        if (sev == "error") {
+            errors++;
+        } else if (sev == "warning") {
+            warnings++;
+        } else if (sev == "info") {
+            notes++;
+        }
+    }
+
+    godot::Dictionary summary;
+    summary["checks_run"] = checks_run;
+    summary["total_issues"] = errors + warnings;
+    summary["errors"] = errors;
+    summary["warnings"] = warnings;
+    summary["notes"] = notes;
+    return summary;
+}
+
+void apply_issue_summary(godot::Dictionary &item_result,
+                         const godot::Array &issues,
+                         int checks_run) {
+    godot::Dictionary issue_summary = issue_summary_for(issues, checks_run);
+    item_result["issues"] = issues;
+    item_result["issue_summary"] = issue_summary;
+    item_result["checks_run"] = checks_run;
+    item_result["total_issues"] = issue_summary["total_issues"];
+    item_result["errors"] = issue_summary["errors"];
+    item_result["warnings"] = issue_summary["warnings"];
+    item_result["notes"] = issue_summary["notes"];
+}
+
 godot::String runtime_artifact_user_path(const godot::String &abs_path,
                                          const godot::String &artifact_dir_abs,
                                          const godot::String &artifact_dir_res) {
@@ -297,29 +339,9 @@ godot::Dictionary FennaraValidateSceneTool::validate_scene_item(
     }
     if (!state.is_valid()) {
         if (!issues.is_empty()) {
-            int errors = 0;
-            int warnings = 0;
-            for (int i = 0; i < issues.size(); i++) {
-                godot::Dictionary issue = issues[i];
-                godot::String sev = issue.get("severity", "");
-                if (sev == "error") errors++;
-                else if (sev == "warning") warnings++;
-            }
-
-            godot::Dictionary issue_summary;
-            issue_summary["checks_run"] = 2;
-            issue_summary["total_issues"] = issues.size();
-            issue_summary["errors"] = errors;
-            issue_summary["warnings"] = warnings;
-
             item_result["status"] = "success";
             item_result["scene_path"] = scene_path;
-            item_result["issues"] = issues;
-            item_result["issue_summary"] = issue_summary;
-            item_result["checks_run"] = 2;
-            item_result["total_issues"] = issues.size();
-            item_result["errors"] = errors;
-            item_result["warnings"] = warnings;
+            apply_issue_summary(item_result, issues, 2);
             return item_result;
         }
 
@@ -335,34 +357,15 @@ godot::Dictionary FennaraValidateSceneTool::validate_scene_item(
     FennaraValidateSceneTool::_check_script_node_references(scene_path, issues);
     FennaraValidateSceneTool::_check_duplicate_siblings(scene_path, issues);
 
-    int errors = 0;
-    int warnings = 0;
-    for (int i = 0; i < issues.size(); i++) {
-        godot::Dictionary issue = issues[i];
-        godot::String sev = issue.get("severity", "");
-        if (sev == "error") errors++;
-        else if (sev == "warning") warnings++;
-    }
-
-    godot::Dictionary issue_summary;
-    issue_summary["checks_run"] = 7;
-    issue_summary["total_issues"] = issues.size();
-    issue_summary["errors"] = errors;
-    issue_summary["warnings"] = warnings;
-
     item_result["status"] = "success";
     item_result["scene_path"] = scene_path;
-    item_result["issues"] = issues;
-    item_result["issue_summary"] = issue_summary;
-    item_result["checks_run"] = 7;
-    item_result["total_issues"] = issues.size();
-    item_result["errors"] = errors;
-    item_result["warnings"] = warnings;
+    apply_issue_summary(item_result, issues, 7);
 
     FLOG_TOOL(godot::String("validate_scene: done, issues=") +
-              godot::String::num_int64(issues.size()) +
-              " errors=" + godot::String::num_int64(errors) +
-              " warnings=" + godot::String::num_int64(warnings));
+              godot::String::num_int64(static_cast<int>(item_result["total_issues"])) +
+              " errors=" + godot::String::num_int64(static_cast<int>(item_result["errors"])) +
+              " warnings=" + godot::String::num_int64(static_cast<int>(item_result["warnings"])) +
+              " notes=" + godot::String::num_int64(static_cast<int>(item_result["notes"])));
     return item_result;
 }
 
@@ -464,6 +467,7 @@ godot::Dictionary FennaraValidateSceneTool::build_result_from_scenes(
     int total_issues = 0;
     int errors = 0;
     int warnings = 0;
+    int notes = 0;
     int checks_run = 0;
     int runtime_checked_count = 0;
     for (int i = 0; i < final_scenes.size(); i++) {
@@ -477,6 +481,7 @@ godot::Dictionary FennaraValidateSceneTool::build_result_from_scenes(
             total_issues += static_cast<int>(scene.get("total_issues", 0));
             errors += static_cast<int>(scene.get("errors", 0));
             warnings += static_cast<int>(scene.get("warnings", 0));
+            notes += static_cast<int>(scene.get("notes", 0));
             checks_run += static_cast<int>(scene.get("checks_run", 0));
             if (is_runtime_eligible_scene(scene)) {
                 runtime_checked_count++;
@@ -498,6 +503,7 @@ godot::Dictionary FennaraValidateSceneTool::build_result_from_scenes(
     summary["total_issues"] = total_issues;
     summary["errors"] = errors;
     summary["warnings"] = warnings;
+    summary["notes"] = notes;
     summary["checks_run"] = checks_run;
     summary["runtime_checked_count"] = runtime_checked_count;
     summary["runtime_skipped"] =
@@ -623,29 +629,9 @@ godot::Dictionary FennaraValidateSceneTool::execute(const godot::Dictionary &arg
         }
         if (!state.is_valid()) {
             if (!issues.is_empty()) {
-                int errors = 0;
-                int warnings = 0;
-                for (int i = 0; i < issues.size(); i++) {
-                    godot::Dictionary issue = issues[i];
-                    godot::String sev = issue.get("severity", "");
-                    if (sev == "error") errors++;
-                    else if (sev == "warning") warnings++;
-                }
-
-                godot::Dictionary issue_summary;
-                issue_summary["checks_run"] = 2;
-                issue_summary["total_issues"] = issues.size();
-                issue_summary["errors"] = errors;
-                issue_summary["warnings"] = warnings;
-
                 item_result["status"] = "success";
                 item_result["scene_path"] = scene_path;
-                item_result["issues"] = issues;
-                item_result["issue_summary"] = issue_summary;
-                item_result["checks_run"] = 2;
-                item_result["total_issues"] = issues.size();
-                item_result["errors"] = errors;
-                item_result["warnings"] = warnings;
+                apply_issue_summary(item_result, issues, 2);
                 return item_result;
             }
 
@@ -661,34 +647,15 @@ godot::Dictionary FennaraValidateSceneTool::execute(const godot::Dictionary &arg
         FennaraValidateSceneTool::_check_script_node_references(scene_path, issues);
         FennaraValidateSceneTool::_check_duplicate_siblings(scene_path, issues);
 
-        int errors = 0;
-        int warnings = 0;
-        for (int i = 0; i < issues.size(); i++) {
-            godot::Dictionary issue = issues[i];
-            godot::String sev = issue.get("severity", "");
-            if (sev == "error") errors++;
-            else if (sev == "warning") warnings++;
-        }
-
-        godot::Dictionary issue_summary;
-        issue_summary["checks_run"] = 7;
-        issue_summary["total_issues"] = issues.size();
-        issue_summary["errors"] = errors;
-        issue_summary["warnings"] = warnings;
-
         item_result["status"] = "success";
         item_result["scene_path"] = scene_path;
-        item_result["issues"] = issues;
-        item_result["issue_summary"] = issue_summary;
-        item_result["checks_run"] = 7;
-        item_result["total_issues"] = issues.size();
-        item_result["errors"] = errors;
-        item_result["warnings"] = warnings;
+        apply_issue_summary(item_result, issues, 7);
 
         FLOG_TOOL(godot::String("validate_scene: done, issues=") +
-                  godot::String::num_int64(issues.size()) +
-                  " errors=" + godot::String::num_int64(errors) +
-                  " warnings=" + godot::String::num_int64(warnings));
+                  godot::String::num_int64(static_cast<int>(item_result["total_issues"])) +
+                  " errors=" + godot::String::num_int64(static_cast<int>(item_result["errors"])) +
+                  " warnings=" + godot::String::num_int64(static_cast<int>(item_result["warnings"])) +
+                  " notes=" + godot::String::num_int64(static_cast<int>(item_result["notes"])));
         return item_result;
     };
 

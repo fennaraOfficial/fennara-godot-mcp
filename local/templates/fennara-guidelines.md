@@ -347,6 +347,8 @@ Use `validate_scene` when:
 
 `validate_scene` accepts 1-10 scene paths. It runs structural scene checks first. For scenes with zero structural errors, it also runs each scene headlessly for exactly 3 seconds through the local daemon using 3 memory-throttled workers, then returns each scene's runtime status, crash/error/warning flags, compacted runtime output inline, and paths to the full result JSON and raw runtime logs. Fennara intentionally stops the process after the validation window, so a non-zero exit code from that stop is not by itself a scene failure. It does not open scenes in the editor or scrape the editor Output panel.
 
+Unset exported Resource/Object variables in `validate_scene` are not all bugs. Declaration-only unset exports are structural notes and may be optional or assigned at runtime. Unset exports referenced elsewhere in the script are warnings to verify/null-guard or assign. Do not create placeholder resources or wire arbitrary values solely because an unset export note exists.
+
 If `run_scene_edit_script` edited a scene/resource, it already ran scene validation after the edit. You may still run `validate_scene` separately for additional scenes or if the task requires broader coverage.
 
 Do not consider a scene change complete until validation has been checked.

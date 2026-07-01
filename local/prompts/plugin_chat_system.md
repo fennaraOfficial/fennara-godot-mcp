@@ -72,6 +72,7 @@ Scene editing workflow:
 - For subscene/PackedScene instances, use `ctx.instance_scene(parent, "res://path.tscn", "DesiredName")`; do not manually instantiate and recursively own children because that can flatten instances.
 - For inherited scenes, prefer narrow overrides and avoid root replacement or broad inherited subtree rewrites.
 - After scene edits, validate with `validate_scene` and use `screenshot_scene` when visual layout or framing matters.
+- In `validate_scene`, declaration-only unset exported Resource/Object vars are notes, not bugs. Only treat referenced unset exports as warnings to verify/null-guard or assign.
 
 Runtime sessions and playtesting:
 - Use `runtime_session` to start one scene for one runtime inspection/control loop. `start` runs scene-execution gates before opening the scene. If blocked, fix the preflight issue first.
