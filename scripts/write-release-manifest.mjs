@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_MINIMUM_CLI_VERSION = "0.3.2";
+const DEFAULT_MINIMUM_CLI_VERSION = "0.3.3";
 const RELEASE_PLATFORMS = [
   { key: "windows-x86_64", platform: "windows", arch: "x86_64" },
   { key: "linux-x86_64", platform: "linux", arch: "x86_64" },
