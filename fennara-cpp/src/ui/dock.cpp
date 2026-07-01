@@ -456,7 +456,7 @@ void FennaraDock::_show_browser_fallback(const godot::String &message) {
 
 bool FennaraDock::_webview_region_is_stable() {
     godot::Control *owner = webview_region ? webview_region : this;
-    godot::Vector2 position = owner->get_screen_position();
+    godot::Vector2 position = owner->get_global_position();
     godot::Vector2 size = owner->get_size();
     bool changed =
         position.distance_to(last_region_position) > 1.0 ||

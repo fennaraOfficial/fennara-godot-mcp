@@ -49,10 +49,10 @@ WebviewGeometry compute_webview_geometry(godot::Control *owner) {
         return geometry;
     }
 
-    godot::Vector2 screen_position = owner->get_screen_position();
+    godot::Vector2 position = owner->get_global_position();
     geometry.visible = true;
-    geometry.x = static_cast<int>(screen_position.x);
-    geometry.y = static_cast<int>(screen_position.y);
+    geometry.x = static_cast<int>(position.x);
+    geometry.y = static_cast<int>(position.y);
     geometry.width = static_cast<int>(size.x);
     geometry.height = static_cast<int>(size.y);
     return geometry;
@@ -290,16 +290,8 @@ public:
             return;
         }
 
-        HWND parent_hwnd = reinterpret_cast<HWND>(parent_window);
-        POINT origin{
-            static_cast<LONG>(geometry.x),
-            static_cast<LONG>(geometry.y),
-        };
-        if (parent_hwnd != nullptr) {
-            ScreenToClient(parent_hwnd, &origin);
-        }
-        int x = static_cast<int>(origin.x);
-        int y = static_cast<int>(origin.y);
+        int x = geometry.x;
+        int y = geometry.y;
 
         SetWindowPos(
             hwnd,
@@ -310,8 +302,6 @@ public:
             geometry.height,
             SWP_NOACTIVATE | SWP_NOZORDER);
         ShowWindow(hwnd, SW_SHOW);
-        debug_log("Web chat Windows widget state after ShowWindow: " +
-                  window_state_string(hwnd));
 
         if (x != last_x || y != last_y || geometry.width != last_width ||
             geometry.height != last_height) {
@@ -323,6 +313,8 @@ public:
                        " y=" + godot::String::num_int64(y) +
                        " w=" + godot::String::num_int64(geometry.width) +
                        " h=" + godot::String::num_int64(geometry.height));
+            debug_log("Web chat Windows widget state after ShowWindow: " +
+                      window_state_string(hwnd));
         }
     }
 

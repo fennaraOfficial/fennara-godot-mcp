@@ -214,18 +214,28 @@
     }
 
     function renderProviderRow(provider) {
+      const canUpdateKey = provider.auth?.type === "api_key" && provider.connected;
+      const status = canUpdateKey ? "Connected - update key" : providerStatusLabel(provider);
       const row = document.createElement("button");
       row.className = "provider-row";
       row.type = "button";
       row.dataset.providerOption = provider.id;
+      row.title = canUpdateKey
+        ? `Update ${provider.name} API key`
+        : `Use ${provider.name}`;
       row.innerHTML = [
         "<span>",
         `<strong>${escapeHtml(provider.name)}</strong>`,
         "</span>",
-        `<b>${escapeHtml(providerStatusLabel(provider))}</b>`,
+        `<b>${escapeHtml(status)}</b>`,
       ].join("");
       row.addEventListener("click", (event) => {
         event.stopPropagation();
+        if (canUpdateKey) {
+          chooseProvider(provider.id);
+          openProviderKeyPrompt(provider.id);
+          return;
+        }
         chooseProvider(provider.id);
       });
       return row;
