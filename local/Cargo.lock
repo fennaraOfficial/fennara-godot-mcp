@@ -268,7 +268,7 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fennara-cli"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "json5",
  "serde_json",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "fennara-daemon"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "axum",
  "base64",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "fennara-mcp"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "serde",
  "serde_json",

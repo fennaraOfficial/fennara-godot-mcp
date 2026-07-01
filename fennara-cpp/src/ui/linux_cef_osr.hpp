@@ -42,6 +42,7 @@ private:
     std::unique_ptr<CefObjects> cef;
     int texture_width = 0;
     int texture_height = 0;
+    int delivered_frame_count = 0;
     bool started = false;
     bool focused = false;
 };

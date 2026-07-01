@@ -20,7 +20,42 @@
 
 static const NSUInteger kMaxPasteImageBytes = 8 * 1024 * 1024;
 
-@interface FennaraMacWebViewDelegate : NSObject <WKUIDelegate, WKScriptMessageHandler>
+static bool FennaraMacWebViewDebugEnabled() {
+    const char *generic = std::getenv("FENNARA_WEBVIEW_DEBUG");
+    const char *mac = std::getenv("FENNARA_MAC_WEBVIEW_DEBUG");
+    return (generic != nullptr && std::string(generic) == "1") ||
+           (mac != nullptr && std::string(mac) == "1");
+}
+
+static void FennaraMacWebViewDebugLog(NSString *message) {
+    if (!FennaraMacWebViewDebugEnabled() || message == nil) {
+        return;
+    }
+    godot::UtilityFunctions::print(
+        godot::String("[Fennara] macOS webview ") +
+        godot::String([message UTF8String] != nullptr ? [message UTF8String] : ""));
+}
+
+static NSString *FennaraMacWebViewNavigationString(WKNavigation *navigation) {
+    return [NSString stringWithFormat:@"%p", navigation];
+}
+
+static NSString *FennaraMacWebViewUrlString(WKWebView *webView) {
+    NSURL *url = webView.URL;
+    return url != nil ? url.absoluteString : @"<nil>";
+}
+
+static NSString *FennaraMacWebViewErrorString(NSError *error) {
+    if (error == nil) {
+        return @"<nil>";
+    }
+    return [NSString stringWithFormat:@"%@ code=%ld desc=%@",
+                                      error.domain,
+                                      static_cast<long>(error.code),
+                                      error.localizedDescription ?: @""];
+}
+
+@interface FennaraMacWebViewDelegate : NSObject <WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler>
 @property(nonatomic, assign) WKWebView *webView;
 @end
 
@@ -54,10 +89,66 @@ static const NSUInteger kMaxPasteImageBytes = 8 * 1024 * 1024;
 
 - (void)userContentController:(WKUserContentController *)userContentController
       didReceiveScriptMessage:(WKScriptMessage *)message {
+    if ([message.name isEqualToString:@"fennaraDebug"]) {
+        FennaraMacWebViewDebugLog(
+            [NSString stringWithFormat:@"JS lifecycle payload=%@", message.body]);
+        return;
+    }
     if (![message.name isEqualToString:@"fennaraPasteboard"]) {
         return;
     }
     [self sendPasteboardImageToWebView];
+}
+
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+    FennaraMacWebViewDebugLog(
+        [NSString stringWithFormat:@"navigation start nav=%@ url=%@",
+                                   FennaraMacWebViewNavigationString(navigation),
+                                   FennaraMacWebViewUrlString(webView)]);
+}
+
+- (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
+    FennaraMacWebViewDebugLog(
+        [NSString stringWithFormat:@"navigation commit nav=%@ url=%@ title=%@",
+                                   FennaraMacWebViewNavigationString(navigation),
+                                   FennaraMacWebViewUrlString(webView),
+                                   webView.title ?: @""]);
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    FennaraMacWebViewDebugLog(
+        [NSString stringWithFormat:@"navigation finish nav=%@ url=%@ title=%@ estimatedProgress=%.3f",
+                                   FennaraMacWebViewNavigationString(navigation),
+                                   FennaraMacWebViewUrlString(webView),
+                                   webView.title ?: @"",
+                                   webView.estimatedProgress]);
+}
+
+- (void)webView:(WKWebView *)webView
+    didFailNavigation:(WKNavigation *)navigation
+            withError:(NSError *)error {
+    FennaraMacWebViewDebugLog(
+        [NSString stringWithFormat:@"navigation fail nav=%@ url=%@ error=%@",
+                                   FennaraMacWebViewNavigationString(navigation),
+                                   FennaraMacWebViewUrlString(webView),
+                                   FennaraMacWebViewErrorString(error)]);
+}
+
+- (void)webView:(WKWebView *)webView
+    didFailProvisionalNavigation:(WKNavigation *)navigation
+                       withError:(NSError *)error {
+    FennaraMacWebViewDebugLog(
+        [NSString stringWithFormat:@"navigation provisional fail nav=%@ url=%@ error=%@",
+                                   FennaraMacWebViewNavigationString(navigation),
+                                   FennaraMacWebViewUrlString(webView),
+                                   FennaraMacWebViewErrorString(error)]);
+}
+
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    FennaraMacWebViewDebugLog(
+        [NSString stringWithFormat:@"web content process terminated url=%@ title=%@",
+                                   FennaraMacWebViewUrlString(webView),
+                                   webView.title ?: @""]);
 }
 
 - (void)sendPasteboardImageToWebView {
@@ -203,10 +294,7 @@ void output_log(const godot::String &message) {
 }
 
 bool debug_logging_enabled() {
-    const char *generic = std::getenv("FENNARA_WEBVIEW_DEBUG");
-    const char *mac = std::getenv("FENNARA_MAC_WEBVIEW_DEBUG");
-    return (generic != nullptr && std::string(generic) == "1") ||
-           (mac != nullptr && std::string(mac) == "1");
+    return FennaraMacWebViewDebugEnabled();
 }
 
 void debug_log(const godot::String &message) {
@@ -416,8 +504,40 @@ bool start(void **webview, void **parent_window, godot::Control *owner, const go
         FennaraMacWebViewDelegate *delegate = [[FennaraMacWebViewDelegate alloc] init];
         delegate.webView = view;
         [view setUIDelegate:delegate];
+        [view setNavigationDelegate:delegate];
         [view.configuration.userContentController addScriptMessageHandler:delegate
                                                                      name:@"fennaraPasteboard"];
+        [view.configuration.userContentController addScriptMessageHandler:delegate
+                                                                     name:@"fennaraDebug"];
+        if (FennaraMacWebViewDebugEnabled()) {
+            NSString *debugScript = @"(() => {"
+                @"const post=(event,extra={})=>{try{window.webkit.messageHandlers.fennaraDebug.postMessage({"
+                @"event,"
+                @"href:String(location.href||''),"
+                @"readyState:String(document.readyState||''),"
+                @"hasBody:Boolean(document.body),"
+                @"bodyChildren:document.body?document.body.children.length:-1,"
+                @"title:String(document.title||''),"
+                @"...extra"
+                @"});}catch(_){}};"
+                @"post('init');"
+                @"document.addEventListener('DOMContentLoaded',()=>post('domcontentloaded'),{once:true});"
+                @"window.addEventListener('load',()=>post('load'),{once:true});"
+                @"window.addEventListener('error',(event)=>post('error',{"
+                @"message:String(event.message||''),source:String(event.filename||''),"
+                @"line:Number(event.lineno||0),column:Number(event.colno||0)}));"
+                @"window.addEventListener('unhandledrejection',(event)=>post('unhandledrejection',{"
+                @"reason:String(event.reason&&(event.reason.stack||event.reason.message||event.reason)||'')}));"
+                @"setTimeout(()=>post('heartbeat-1000ms',{activeElement:document.activeElement?document.activeElement.tagName:''}),1000);"
+                @"setTimeout(()=>post('heartbeat-3000ms',{activeElement:document.activeElement?document.activeElement.tagName:''}),3000);"
+                @"})();";
+            WKUserScript *script = [[WKUserScript alloc]
+                initWithSource:debugScript
+                  injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+               forMainFrameOnly:NO];
+            [view.configuration.userContentController addUserScript:script];
+            [script release];
+        }
         objc_setAssociatedObject(view, &kMacWebViewDelegateKey, delegate,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [delegate release];
@@ -428,7 +548,10 @@ bool start(void **webview, void **parent_window, godot::Control *owner, const go
         NSString *url_string = [NSString stringWithUTF8String:url_utf8.c_str()];
         NSURL *ns_url = [NSURL URLWithString:url_string];
         if (ns_url != nil) {
+            debug_log("macOS webview loadRequest url=" + godot::String(url_utf8.c_str()));
             [view loadRequest:[NSURLRequest requestWithURL:ns_url]];
+        } else {
+            output_log("macOS webview start failed: invalid URL " + godot::String(url_utf8.c_str()));
         }
 
         *webview = view;
@@ -571,6 +694,8 @@ void stop(void **webview, void **parent_window) {
             [window makeFirstResponder:nil];
         }
         [view.configuration.userContentController removeScriptMessageHandlerForName:@"fennaraPasteboard"];
+        [view.configuration.userContentController removeScriptMessageHandlerForName:@"fennaraDebug"];
+        [view setNavigationDelegate:nil];
         [view setUIDelegate:nil];
         objc_setAssociatedObject(view, &kMacWebViewDelegateKey, nil,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);

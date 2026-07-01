@@ -21,7 +21,7 @@ protected:
     static void _bind_methods();
 
 public:
-    static constexpr const char *PLUGIN_VERSION = "0.3.3";
+    static constexpr const char *PLUGIN_VERSION = "0.3.4";
 
     void _ready() override;
     void _process(double delta) override;

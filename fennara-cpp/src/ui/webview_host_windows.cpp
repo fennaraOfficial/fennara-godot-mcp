@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <webview/webview.h>
 
+#include <array>
 #include <cstdlib>
 #include <cstdint>
 #include <string>
@@ -74,6 +75,89 @@ godot::String hwnd_string(HWND hwnd) {
     return godot::String::num_int64(reinterpret_cast<int64_t>(hwnd));
 }
 
+godot::String bool_string(bool value) {
+    return value ? "true" : "false";
+}
+
+godot::String rect_string(const RECT &rect) {
+    return "left=" + godot::String::num_int64(rect.left) +
+           " top=" + godot::String::num_int64(rect.top) +
+           " right=" + godot::String::num_int64(rect.right) +
+           " bottom=" + godot::String::num_int64(rect.bottom) +
+           " w=" + godot::String::num_int64(rect.right - rect.left) +
+           " h=" + godot::String::num_int64(rect.bottom - rect.top);
+}
+
+godot::String window_state_string(HWND hwnd) {
+    if (hwnd == nullptr) {
+        return "hwnd=null";
+    }
+
+    RECT window_rect{};
+    RECT client_rect{};
+    const bool has_window_rect = GetWindowRect(hwnd, &window_rect) != 0;
+    const bool has_client_rect = GetClientRect(hwnd, &client_rect) != 0;
+    std::array<char, 128> class_name{};
+    int class_len = GetClassNameA(hwnd, class_name.data(), static_cast<int>(class_name.size()));
+    godot::String class_value = class_len > 0
+                                    ? godot::String(class_name.data())
+                                    : "<unknown>";
+
+    return "hwnd=" + hwnd_string(hwnd) +
+           " class=" + class_value +
+           " visible=" + bool_string(IsWindowVisible(hwnd) != 0) +
+           " enabled=" + bool_string(IsWindowEnabled(hwnd) != 0) +
+           " parent=" + hwnd_string(GetParent(hwnd)) +
+           " style=0x" + godot::String::num_uint64(
+                              static_cast<uint64_t>(GetWindowLongPtr(hwnd, GWL_STYLE)), 16) +
+           " ex_style=0x" + godot::String::num_uint64(
+                                 static_cast<uint64_t>(GetWindowLongPtr(hwnd, GWL_EXSTYLE)), 16) +
+           " window_rect={" + (has_window_rect ? rect_string(window_rect) : "unavailable") + "}" +
+           " client_rect={" + (has_client_rect ? rect_string(client_rect) : "unavailable") + "}";
+}
+
+godot::String webview_error_string(webview_error_t error) {
+    return godot::String::num_int64(static_cast<int64_t>(error));
+}
+
+constexpr const char *kWindowsLifecycleScript = R"JS(
+(() => {
+  const post = (event, extra = {}) => {
+    try {
+      if (typeof window.__fennaraWebviewDebug === "function") {
+        window.__fennaraWebviewDebug(JSON.stringify({
+          event,
+          href: String(location.href || ""),
+          readyState: String(document.readyState || ""),
+          hasBody: Boolean(document.body),
+          bodyChildren: document.body ? document.body.children.length : -1,
+          title: String(document.title || ""),
+          ...extra,
+        }));
+      }
+    } catch (_) {}
+  };
+  post("init");
+  document.addEventListener("DOMContentLoaded", () => post("domcontentloaded"), { once: true });
+  window.addEventListener("load", () => post("load"), { once: true });
+  window.addEventListener("error", (event) => post("error", {
+    message: String(event.message || ""),
+    source: String(event.filename || ""),
+    line: Number(event.lineno || 0),
+    column: Number(event.colno || 0),
+  }));
+  window.addEventListener("unhandledrejection", (event) => post("unhandledrejection", {
+    reason: String(event.reason && (event.reason.stack || event.reason.message || event.reason) || ""),
+  }));
+  setTimeout(() => post("heartbeat-1000ms", {
+    activeElement: document.activeElement ? document.activeElement.tagName : "",
+  }), 1000);
+  setTimeout(() => post("heartbeat-3000ms", {
+    activeElement: document.activeElement ? document.activeElement.tagName : "",
+  }), 3000);
+})();
+)JS";
+
 } // namespace
 
 class WindowsWebviewBackend : public NativeWebviewBackend {
@@ -113,7 +197,10 @@ public:
         parent_window = reinterpret_cast<void *>(native_window);
 
         debug_log("Web chat creating native Windows webview url=" + url);
-        webview = webview_create(0, parent_window);
+        debug_log("Web chat Windows parent state before create: " +
+                  window_state_string(reinterpret_cast<HWND>(parent_window)));
+        const int webview_debug = debug_logging_enabled() ? 1 : 0;
+        webview = webview_create(webview_debug, parent_window);
         if (webview == nullptr) {
             output_error(
                 "Web chat host cannot start: webview_create returned null. "
@@ -122,6 +209,11 @@ public:
                 "https://developer.microsoft.com/microsoft-edge/webview2/ "
                 "and restart Godot. Fennara MCP tools still work without the built-in chat dock.");
             return false;
+        }
+        const webview_version_info_t *version = webview_version();
+        if (version != nullptr) {
+            debug_log("Web chat Windows webview wrapper version=" +
+                      godot::String(version->version_number));
         }
 
         widget = webview_get_native_handle(
@@ -137,9 +229,33 @@ public:
             current_window_id = -1;
             return false;
         }
+        debug_log("Web chat Windows widget state after create: " +
+                  window_state_string(reinterpret_cast<HWND>(widget)));
+
+        void *controller = webview_get_native_handle(
+            static_cast<webview_t>(webview),
+            WEBVIEW_NATIVE_HANDLE_KIND_BROWSER_CONTROLLER);
+        debug_log("Web chat Windows browser controller handle=" +
+                  godot::String::num_int64(reinterpret_cast<int64_t>(controller)));
+
+        webview_error_t bind_error = webview_bind(
+            static_cast<webview_t>(webview),
+            "__fennaraWebviewDebug",
+            &WindowsWebviewBackend::debug_binding,
+            this);
+        debug_log("Web chat Windows debug binding result=" +
+                  webview_error_string(bind_error));
+        webview_error_t init_error =
+            webview_init(static_cast<webview_t>(webview), kWindowsLifecycleScript);
+        debug_log("Web chat Windows lifecycle script init result=" +
+                  webview_error_string(init_error));
 
         std::string url_utf8 = url.utf8().get_data();
-        webview_navigate(static_cast<webview_t>(webview), url_utf8.c_str());
+        webview_error_t navigate_error =
+            webview_navigate(static_cast<webview_t>(webview), url_utf8.c_str());
+        debug_log("Web chat Windows navigate result=" +
+                  webview_error_string(navigate_error) +
+                  " url=" + url);
         current_url = url;
         started = true;
         resize_to(owner);
@@ -194,6 +310,8 @@ public:
             geometry.height,
             SWP_NOACTIVATE | SWP_NOZORDER);
         ShowWindow(hwnd, SW_SHOW);
+        debug_log("Web chat Windows widget state after ShowWindow: " +
+                  window_state_string(hwnd));
 
         if (x != last_x || y != last_y || geometry.width != last_width ||
             geometry.height != last_height) {
@@ -216,6 +334,8 @@ public:
             set_focused(false);
         }
         ShowWindow(reinterpret_cast<HWND>(widget), visible ? SW_SHOW : SW_HIDE);
+        debug_log("Web chat Windows set_visible visible=" + bool_string(visible) +
+                  " widget={" + window_state_string(reinterpret_cast<HWND>(widget)) + "}");
     }
 
     void set_focused(bool next_focused) override {
@@ -285,6 +405,26 @@ public:
     }
 
 private:
+    static void debug_binding(const char *id, const char *req, void *arg) {
+        auto *self = static_cast<WindowsWebviewBackend *>(arg);
+        if (self == nullptr) {
+            return;
+        }
+        self->debug_log_from_js(id, req);
+    }
+
+    void debug_log_from_js(const char *id, const char *req) {
+        debug_log("Web chat Windows JS lifecycle id=" +
+                  godot::String(id != nullptr ? id : "") +
+                  " payload=" + godot::String(req != nullptr ? req : ""));
+        if (webview != nullptr && id != nullptr) {
+            webview_error_t return_error =
+                webview_return(static_cast<webview_t>(webview), id, 0, "null");
+            debug_log("Web chat Windows JS lifecycle return result=" +
+                      webview_error_string(return_error));
+        }
+    }
+
     void *webview = nullptr;
     void *widget = nullptr;
     void *parent_window = nullptr;

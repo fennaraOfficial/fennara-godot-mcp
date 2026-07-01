@@ -95,6 +95,7 @@ struct LinuxCefOsrWebview::CefObjects {
     bool dirty = false;
     input::MouseState mouse_state;
     input::KeyboardState keyboard_state;
+    std::atomic<int> paint_count{0};
 
     const fennara_cef_bridge_api *api() const {
         return bridge.api();
@@ -139,6 +140,7 @@ struct LinuxCefOsrWebview::CefObjects {
         pending_width = frame_width;
         pending_height = frame_height;
         dirty = true;
+        paint_count.fetch_add(1, std::memory_order_relaxed);
     }
 
     static void paint_callback(const uint8_t *bytes, int frame_width, int frame_height, void *user_data) {
@@ -169,6 +171,7 @@ godot::Control *LinuxCefOsrWebview::create_control() {
 
 bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) {
     if (started) {
+        debug_log("start skipped: already started");
         return true;
     }
     if (owner == nullptr) {
@@ -248,13 +251,16 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     settings.cache_path = cache_path.c_str();
     settings.log_file = log_file.c_str();
     const int process_exit_code = api->execute_process(&settings, &callbacks);
+    debug_log("execute_process returned " + godot::String::num_int64(process_exit_code));
     if (process_exit_code >= 0) {
         webview_backend::output_error(
             "Web chat Linux CEF execute_process unexpectedly handled the Godot process");
         cef.reset();
         return false;
     }
-    if (api->initialize(&settings, &callbacks) == 0) {
+    const int initialized = api->initialize(&settings, &callbacks);
+    debug_log("initialize returned " + godot::String::num_int64(initialized));
+    if (initialized == 0) {
         webview_backend::output_error("Web chat Linux CEF initialization failed");
         cef.reset();
         return false;
@@ -285,6 +291,7 @@ bool LinuxCefOsrWebview::start(godot::Control *owner, const godot::String &url) 
     }
 
     started = true;
+    delivered_frame_count = 0;
     debug_log("browser started at " + runtime_dir);
     return true;
 }
@@ -301,12 +308,18 @@ void LinuxCefOsrWebview::resize_to(godot::Control *owner) {
         return;
     }
 
+    debug_log("resize " + godot::String::num_int64(cef->width) + "x" +
+              godot::String::num_int64(cef->height) + " -> " +
+              godot::String::num_int64(width) + "x" +
+              godot::String::num_int64(height));
     cef->width = width;
     cef->height = height;
     cef->notify_resized();
 }
 
 void LinuxCefOsrWebview::set_visible(bool visible) {
+    debug_log("set_visible requested visible=" + godot::String(visible ? "true" : "false") +
+              " started=" + godot::String(started ? "true" : "false"));
     godot::TextureRect *texture_rect = current_texture_rect();
     if (texture_rect != nullptr) {
         texture_rect->set_visible(visible);
@@ -323,6 +336,9 @@ void LinuxCefOsrWebview::set_visible(bool visible) {
     const fennara_cef_bridge_api *api = cef->api();
     if (api != nullptr && api->set_browser_hidden != nullptr && cef->browser != nullptr) {
         api->set_browser_hidden(cef->browser, visible ? 0 : 1);
+        debug_log("set_browser_hidden hidden=" + godot::String(visible ? "false" : "true"));
+    } else {
+        debug_log("set_browser_hidden skipped: api/browser unavailable");
     }
 }
 
@@ -343,6 +359,14 @@ void LinuxCefOsrWebview::process(double delta) {
     int height = 0;
     if (!cef->take_frame(frame, width, height) || frame.empty()) {
         return;
+    }
+    delivered_frame_count += 1;
+    if (delivered_frame_count <= 3 || delivered_frame_count == 10) {
+        debug_log("received OSR frame #" + godot::String::num_int64(delivered_frame_count) +
+                  " size=" + godot::String::num_int64(width) + "x" +
+                  godot::String::num_int64(height) +
+                  " paints=" + godot::String::num_int64(cef->paint_count.load(std::memory_order_relaxed)) +
+                  " bytes=" + godot::String::num_int64(static_cast<int64_t>(frame.size())));
     }
 
     godot::PackedByteArray bytes;
@@ -390,12 +414,15 @@ bool LinuxCefOsrWebview::handle_input(const godot::Ref<godot::InputEvent> &event
                                             cef->keyboard_state,
                                             request_focus);
     if (request_focus) {
+        debug_log("input requested focus");
         set_focused(true);
     }
     return handled;
 }
 
 void LinuxCefOsrWebview::set_focused(bool next_focused) {
+    debug_log("set_focused requested focused=" + godot::String(next_focused ? "true" : "false") +
+              " started=" + godot::String(started ? "true" : "false"));
     if (!next_focused && cef != nullptr) {
         input::clear_keyboard_state(cef->keyboard_state);
     }
@@ -410,6 +437,7 @@ void LinuxCefOsrWebview::set_focused(bool next_focused) {
 
     api->set_browser_focus(cef->browser, next_focused ? 1 : 0);
     focused = next_focused;
+    debug_log("set_browser_focus focused=" + godot::String(next_focused ? "true" : "false"));
 }
 
 void LinuxCefOsrWebview::notify_mouse_leave() {
@@ -417,13 +445,18 @@ void LinuxCefOsrWebview::notify_mouse_leave() {
         return;
     }
 
+    debug_log("notify_mouse_leave");
     input::notify_mouse_leave(cef->api(), cef->browser, cef->mouse_state);
 }
 
 void LinuxCefOsrWebview::stop() {
+    debug_log("stop requested started=" + godot::String(started ? "true" : "false") +
+              " cef=" + godot::String(cef != nullptr ? "present" : "null") +
+              " delivered_frames=" + godot::String::num_int64(delivered_frame_count));
     if (cef != nullptr) {
         if (cef->initialized) {
             set_focused(false);
+            debug_log("closing CEF browser");
             cef->close_browser();
             const fennara_cef_bridge_api *api = cef->api();
             if (api != nullptr) {
@@ -431,6 +464,7 @@ void LinuxCefOsrWebview::stop() {
                     api->do_message_loop_work();
                 }
                 if (api->shutdown != nullptr) {
+                    debug_log("shutting down CEF bridge");
                     api->shutdown();
                 }
             }
@@ -442,6 +476,7 @@ void LinuxCefOsrWebview::stop() {
     texture.unref();
     texture_width = 0;
     texture_height = 0;
+    delivered_frame_count = 0;
     godot::TextureRect *texture_rect = current_texture_rect();
     if (texture_rect != nullptr) {
         texture_rect->set_texture(godot::Ref<godot::Texture2D>());

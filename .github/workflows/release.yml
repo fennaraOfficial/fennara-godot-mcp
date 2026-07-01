@@ -390,14 +390,14 @@ jobs:
             exit 1
           fi
 
-          notes="Fennara Godot MCP ${tag}
+          notes="Fennara Godot AI ${tag}
 
           Built from ${GITHUB_SHA}."
 
           gh release create "${tag}" "${assets[@]}" \
             --repo "${GITHUB_REPOSITORY}" \
             --target "${GITHUB_SHA}" \
-            --title "Fennara Godot MCP ${tag}" \
+            --title "Fennara Godot AI ${tag}" \
             --notes "${notes}"
 
           if [[ "${PROMOTE_LATEST}" == "true" ]]; then
@@ -408,13 +408,13 @@ jobs:
             git tag --force latest "${GITHUB_SHA}"
             git push --force origin refs/tags/latest
 
-            latest_notes="Latest Fennara Godot MCP release.
+            latest_notes="Latest Fennara Godot AI release.
 
             Currently points to ${tag}, built from ${GITHUB_SHA}."
 
             gh release create latest "${assets[@]}" \
               --repo "${GITHUB_REPOSITORY}" \
               --target "${GITHUB_SHA}" \
-              --title "Fennara Godot MCP latest" \
+              --title "Fennara Godot AI latest" \
               --notes "${latest_notes}"
           fi

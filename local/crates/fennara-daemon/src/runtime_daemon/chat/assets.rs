@@ -54,11 +54,53 @@ fn asset(path: &str) -> Option<Asset> {
         "app.js" => js(include_bytes!(
             "../../../../../../godot/addons/fennara/dist/app.js"
         )),
+        "attachment-manager.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/attachment-manager.js"
+        )),
+        "chat-navigation.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/chat-navigation.js"
+        )),
+        "command-palette.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/command-palette.js"
+        )),
+        "composer-actions.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/composer-actions.js"
+        )),
+        "daemon-client.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/daemon-client.js"
+        )),
+        "effort-controls.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/effort-controls.js"
+        )),
         "model-picker.js" => js(include_bytes!(
             "../../../../../../godot/addons/fennara/dist/model-picker.js"
         )),
+        "overlay-manager.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/overlay-manager.js"
+        )),
+        "project-file-links.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/project-file-links.js"
+        )),
+        "project-status.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/project-status.js"
+        )),
+        "provider-popovers.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/provider-popovers.js"
+        )),
+        "settings-panel.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/settings-panel.js"
+        )),
+        "shell-bindings.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/shell-bindings.js"
+        )),
+        "stored-transcript.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/stored-transcript.js"
+        )),
         "transcript-renderer.js" => js(include_bytes!(
             "../../../../../../godot/addons/fennara/dist/transcript-renderer.js"
+        )),
+        "usage-summary.js" => js(include_bytes!(
+            "../../../../../../godot/addons/fennara/dist/usage-summary.js"
         )),
         "styles.css" => css(include_bytes!(
             "../../../../../../godot/addons/fennara/dist/styles.css"
@@ -112,5 +154,39 @@ fn js(body: &'static [u8]) -> Asset {
     Asset {
         content_type: "text/javascript; charset=utf-8",
         body,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::asset;
+
+    #[test]
+    fn browser_chat_assets_referenced_by_html_are_embedded() {
+        let index = include_str!("../../../../../../godot/addons/fennara/dist/index.html");
+        for line in index.lines() {
+            assert_referenced_asset(line, "<script src=\"./");
+            assert_referenced_asset(line, "<link rel=\"stylesheet\" href=\"./");
+        }
+    }
+
+    #[test]
+    fn browser_chat_stylesheet_imports_are_embedded() {
+        let styles = include_str!("../../../../../../godot/addons/fennara/dist/styles.css");
+        for line in styles.lines() {
+            assert_referenced_asset(line, "@import \"./");
+        }
+    }
+
+    fn assert_referenced_asset(line: &str, prefix: &str) {
+        let Some(start) = line.find(prefix) else {
+            return;
+        };
+        let path_start = start + prefix.len();
+        let Some(path_end) = line[path_start..].find('"') else {
+            return;
+        };
+        let path = &line[path_start..path_start + path_end];
+        assert!(asset(path).is_some(), "missing embedded chat asset: {path}");
     }
 }

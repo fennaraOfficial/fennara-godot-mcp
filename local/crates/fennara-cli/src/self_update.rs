@@ -124,6 +124,7 @@ pub fn complete(args: Vec<String>) -> Result<(), String> {
     println!("target: {}", display_path(&options.target));
 
     if options.continuation_args.is_empty() {
+        print_windows_prompt_redraw_hint();
         return Ok(());
     }
 
@@ -137,11 +138,21 @@ pub fn complete(args: Vec<String>) -> Result<(), String> {
         .map_err(|err| format!("failed to continue update with new Fennara CLI: {err}"))?;
     if status.success() {
         println!("continuation: completed");
+        print_windows_prompt_redraw_hint();
         Ok(())
     } else {
+        print_windows_prompt_redraw_hint();
         Err(format!("continued update command exited with {status}"))
     }
 }
+
+#[cfg(windows)]
+fn print_windows_prompt_redraw_hint() {
+    println!("note: On Windows, if the shell prompt is not visible, press Enter to redraw it.");
+}
+
+#[cfg(not(windows))]
+fn print_windows_prompt_redraw_hint() {}
 
 fn installed_cli_path(layout: &AppLayout) -> Result<PathBuf, String> {
     let expected = layout.bin_dir.join(binary_name("fennara"));
